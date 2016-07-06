@@ -528,6 +528,7 @@ public class NeuralNet {
 				System.out.println("e = " + round(totalErrors) + " - " + 1000.0f / (elapsed / 1000.0f) + "/s");
 				saveToFile("temp.json");
 				if (totalErrors < target) {
+					System.out.println("optimized after " + i + " epochs");
 					break;
 				}
 			}
