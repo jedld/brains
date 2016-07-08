@@ -523,22 +523,16 @@ public class NeuralNet {
 
 	public double computeAcccuracy(double output[], double expectedOutput[]) {
 		double difference = 0;
-		for (int i = 0; i < output.length; i++) {
-			if (this.errorFormula == Config.MEAN_SQUARED) {
-				difference += 0.5f * Math.pow(expectedOutput[i] - output[i], 2);
-			} else if (this.errorFormula == Config.CROSS_ENTROPY) {
-				difference += Math.log(output[i]) * expectedOutput[i];
-			}
+		if (this.errorFormula == Config.MEAN_SQUARED) {
+			for (int i = 0; i < output.length; i++) { difference += 0.5f * Math.pow(expectedOutput[i] - output[i], 2); };
+		} else if (this.errorFormula == Config.CROSS_ENTROPY) {
+			for (int i = 0; i < output.length; i++) { difference += Math.log(output[i]) * expectedOutput[i]; };
 		}
-		// if (this.errorFormula == Config.CROSS_ENTROPY) {
-		// difference = -1 * difference;
-		// }
 		return difference;
 	}
 
 	// Implementing Fisher–Yates shuffle
-	void shuffleArray(ArrayList<double[]> input, ArrayList<double[]> output) {
-		Random rnd = ThreadLocalRandom.current();
+	void shuffleArray(Random rnd, ArrayList<double[]> input, ArrayList<double[]> output) {
 		for (int i = input.size() - 1; i > 0; i--) {
 			int index = rnd.nextInt(i + 1);
 			// Simple swap
@@ -553,18 +547,23 @@ public class NeuralNet {
 		input.set(i, a);
 	}
 
-	public void optimize(ArrayList<double[]> in, ArrayList<double[]> exp, double target, int max_epochs, boolean batchLearning,
+	public Pair<Integer, Double> optimize(ArrayList<double[]> in, ArrayList<double[]> exp, double target, int max_epochs, boolean batchLearning,
 			OptimizationListener listener) {
 		ArrayList<double[]> inputs = (ArrayList<double[]>) in.clone();
 		ArrayList<double[]> expected = (ArrayList<double[]>) exp.clone();
 		ArrayList<double[]> results = new ArrayList<double[]>();
 
 		long startTime = System.currentTimeMillis();
-		for (int i = 0; i < max_epochs; i++) {
+		
+		int i = 0;
+		double totalErrors = 0;
+		Random rnd = ThreadLocalRandom.current();
+		
+		for (i = 0; i < max_epochs; i++) {
 			int index = 0;
 			// System.out.println("adjusting weights.");
 			results.clear();
-			shuffleArray(inputs, expected);
+			shuffleArray(rnd, inputs, expected);
 			for (double[] input : inputs) {
 				double[] output = feed(input);
 				adjustWeights(expected.get(index++), batchLearning);
@@ -574,7 +573,6 @@ public class NeuralNet {
 			}
 
 			if (batchLearning) {
-//				dumpStates(true);
 				updateWeights();
 				if (i % 1000 == 0) {
 					results.clear();
@@ -589,7 +587,7 @@ public class NeuralNet {
 				long endTime = System.currentTimeMillis();
 				long elapsed = endTime - startTime;
 				startTime = System.currentTimeMillis();
-				double totalErrors = 0;
+				totalErrors = 0;
 				index = 0;
 				for (double[] output : results) {
 					totalErrors += computeAcccuracy(output, expected.get(index++));
@@ -599,12 +597,11 @@ public class NeuralNet {
 					listener.checkpoint(i, totalErrors);
 				}
 				if (totalErrors < target) {
-					System.out.println("optimized after " + i + " epochs");
-					break;
+					return new Pair<Integer,Double>(i, totalErrors);
 				}
 			}
-
 		}
+		return new Pair<Integer,Double>(i, totalErrors);
 	}
 
 	private void updateWeights() {
