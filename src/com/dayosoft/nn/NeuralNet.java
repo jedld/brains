@@ -24,7 +24,6 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 
 public class NeuralNet {
-	private static final int MAX_EPOCHS = 10000000;
 	private int neurons = 0;
 	private int surface = 0;
 	private int outputCount;
@@ -254,17 +253,92 @@ public class NeuralNet {
 			ArrayList<Neuron> layer = layers.get(i);
 			ArrayList<double[]> doubleArr = new ArrayList<double[]>();
 			for (Neuron n : layer) {
-				System.out.print("n:" + n.getId() + " -> ");
 				doubleArr.add(n.getWeights().clone());
-				System.out.print(i + " ");
-				for (double f : n.getWeights()) {
-					System.out.print(f + " ");
-				}
-				System.out.println();
 			}
 			list.add(doubleArr);
 		}
 		return list;
+	}
+	
+	public ArrayList<ArrayList<Double>> dumpBiases() {
+		ArrayList<ArrayList<Double>> biasLayer = new ArrayList<ArrayList<Double>>();
+		for (int i = 0; i < layerCount; i++) {
+			ArrayList<Neuron> layer = layers.get(i);
+			ArrayList<Double> doubleArr = new ArrayList<Double>();
+			for (Neuron n : layer) {
+				doubleArr.add(n.bias);
+			}
+			biasLayer.add(doubleArr);
+		};
+		return biasLayer;
+	}
+
+	public int getNeurons() {
+		return neurons;
+	}
+
+	public int getSurface() {
+		return surface;
+	}
+
+	public int getOutputCount() {
+		return outputCount;
+	}
+
+	public ArrayList<ArrayList<Neuron>> getLayers() {
+		return layers;
+	}
+
+	public ArrayList<Neuron> getAllNeurons() {
+		return allNeurons;
+	}
+
+	public int getLayerCount() {
+		return layerCount;
+	}
+
+	public int getHiddenCount() {
+		return hiddenCount;
+	}
+
+	public double getLearningRate() {
+		return learningRate;
+	}
+
+	public Config getConfig() {
+		return config;
+	}
+
+	public int getNeuronsPerLayer() {
+		return neuronsPerLayer;
+	}
+
+	public double getBias() {
+		return bias;
+	}
+
+	public double getOutputBias() {
+		return outputBias;
+	}
+
+	public double getMomentumFactor() {
+		return momentumFactor;
+	}
+
+	public int getActivationFunctionType() {
+		return activationFunctionType;
+	}
+
+	public int getOutputActivationFunctionType() {
+		return outputActivationFunctionType;
+	}
+
+	public int getErrorFormula() {
+		return errorFormula;
+	}
+
+	public int getGradientFormula() {
+		return gradientFormula;
 	}
 
 	public void loadWeights(ArrayList<ArrayList<double[]>> saveList) {
@@ -479,18 +553,14 @@ public class NeuralNet {
 		input.set(i, a);
 	}
 
-	public void optimize(ArrayList<double[]> in, ArrayList<double[]> exp, double target, boolean batchLearning) {
-		System.out.println("training started.");
-		if (batchLearning) {
-			System.out.println("using batch learning mode.");
-		}
-		saveToFile("temp.json");
+	public void optimize(ArrayList<double[]> in, ArrayList<double[]> exp, double target, int max_epochs, boolean batchLearning,
+			OptimizationListener listener) {
 		ArrayList<double[]> inputs = (ArrayList<double[]>) in.clone();
 		ArrayList<double[]> expected = (ArrayList<double[]>) exp.clone();
 		ArrayList<double[]> results = new ArrayList<double[]>();
-		dumpStates(false);
+
 		long startTime = System.currentTimeMillis();
-		for (int i = 0; i < MAX_EPOCHS; i++) {
+		for (int i = 0; i < max_epochs; i++) {
 			int index = 0;
 			// System.out.println("adjusting weights.");
 			results.clear();
@@ -525,20 +595,15 @@ public class NeuralNet {
 					totalErrors += computeAcccuracy(output, expected.get(index++));
 				}
 				totalErrors = totalErrors / index;
-				System.out.println("e = " + round(totalErrors) + " - " + 1000.0f / (elapsed / 1000.0f) + "/s");
-				saveToFile("temp.json");
+				if (listener != null) {
+					listener.checkpoint(i, totalErrors);
+				}
 				if (totalErrors < target) {
 					System.out.println("optimized after " + i + " epochs");
 					break;
 				}
 			}
 
-		}
-
-		System.out.println("done training.");
-		File file = new File("temp.json");
-		if (file.exists()) {
-			file.delete();
 		}
 	}
 
