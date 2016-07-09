@@ -51,7 +51,7 @@ public class Main {
 		inputs.add(new double[] { 0f});
 		expected.add(new double[] { Math.sin(0f) } );
 		
-		nn.optimize(inputs, expected, 0.01f, 1000000, false, null);
+		nn.optimize(inputs, expected, 0.01f, 1000000, 1000, false, null);
 		nn.dumpStates(false);
 
 		System.out.println("test run ....");

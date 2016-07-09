@@ -1,13 +1,7 @@
 package com.dayosoft.nn;
 
-import java.math.BigDecimal;
-import java.math.MathContext;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-
-import com.dayosoft.nn.NeuralNet.Pair;
-import com.dayosoft.nn.NeuralNet.Tuple;
 
 public class Neuron {
 
@@ -23,15 +17,22 @@ public class Neuron {
 	private double weight[];
 	double biasWeight = 1f;
 	private double previousWeight[];
-	
-	//for batch learning
+
+	// for batch learning
 	private double deltaWeight[];
-	private double deltaBias;
+	private double previousDeltaWeight[];
+	private double weightUpdateValue[];
+	private double weightChange[];
+	private double deltaBias = 0.0f;
+	private double previousDeltaBias = 0.0f;
 	private double inputs[];
-	private double output = 0.0f;
+
+	protected boolean fired = false;
+	protected double output = 0.0f;
 
 	private int id;
 	private int layer;
+	private double delta = 0.0f;
 
 	public int getId() {
 		return id;
@@ -50,15 +51,22 @@ public class Neuron {
 		this.inputs = new double[connections];
 		this.previousWeight = new double[connections];
 		this.deltaWeight = new double[connections];
+		this.previousDeltaWeight = new double[connections];
+		this.weightUpdateValue = new double[conntections];
+		this.weightChange = new double[connections];
 		this.setWeights(new double[connections]);
 		this.deltaBias = 0.0f;
+		this.previousDeltaBias = 0.0f;
 		for (int i = 0; i < connections; i++) {
 			weight[i] = 0.01f;
 			previousWeight[i] = 0.01f;
 			deltaWeight[i] = 0.0f;
+			previousDeltaWeight[i] = 0.0f;
+			weightChange[i] = 0.0f;
+			weightUpdateValue[i] = 0.0f;
 		}
 	}
-	
+
 	public void resetDeltas() {
 		this.deltaBias = 0.0f;
 		for (int i = 0; i < totalConnections; i++) {
@@ -68,9 +76,8 @@ public class Neuron {
 
 	public void reset() {
 		output = 0.0f;
-		for (int i = 0; i < totalConnections; i++) {
-			inputs[i] = 0.0f;
-		}
+		delta = 0.0f;
+		fired = false;
 	}
 
 	public void setInput(int id, double value) {
@@ -79,23 +86,20 @@ public class Neuron {
 
 	public double adjustForOutput(double errorTerm, double learningRate, double momentum, boolean deltaOnly) {
 		double sum = 0;
-		int index = 0;
 		double e = (1 - momentum) * learningRate * errorTerm;
-		for (double t : inputs) {
+		for (int index = 0; index < inputs.length; index++) {
 			sum += errorTerm * weight[index];
 			double pw = weight[index];
-			double delta =  e * t
-					+ momentum * (weight[index] - previousWeight[index]);
+			double delta = e * inputs[index] + momentum * (weight[index] - previousWeight[index]);
 			if (!deltaOnly) {
 				previousWeight[index] = pw;
 				weight[index] += delta;
 			} else {
 				deltaWeight[index] += delta;
 			}
-			index++;
 		}
-		//update bias weight
-		sum += errorTerm * this.biasWeight * this.bias ;
+		// update bias weight
+		sum += errorTerm * this.biasWeight * this.bias;
 		double pBW = this.biasWeight;
 		double deltaBias = e * this.bias + momentum * (biasWeight - previousBiasWeight);
 		if (!deltaOnly) {
@@ -106,9 +110,9 @@ public class Neuron {
 		}
 		return sum;
 	}
-	
+
 	public void applyDelta() {
-		for (int i =0; i < this.totalConnections; i++) {
+		for (int i = 0; i < this.totalConnections; i++) {
 			previousWeight[i] = weight[i];
 			weight[i] += deltaWeight[i];
 			deltaWeight[i] = 0.0f;
@@ -121,7 +125,7 @@ public class Neuron {
 	public double derivative() {
 		if (activationFunctionType == Neuron.SIGMOID) {
 			return output * (1 - output);
-		} else if (activationFunctionType == Neuron.HTAN){
+		} else if (activationFunctionType == Neuron.HTAN) {
 			return 1 - Math.pow(output, 2);
 		} else if (activationFunctionType == SOFTMAX || activationFunctionType == RECTIFIER) {
 			return (1f / (1f + Math.exp(-output)));
@@ -136,16 +140,17 @@ public class Neuron {
 	}
 
 	public double fire() {
-		if (output == 0.0f) {
+		if (!fired) {
 			if (activationFunctionType == SIGMOID) {
 				output = (1f / (1f + Math.exp(-(getTotal()))));
-			} else if (activationFunctionType == HTAN){
-				output = Math.tanh( getTotal());
+			} else if (activationFunctionType == HTAN) {
+				output = Math.tanh(getTotal());
 			} else if (activationFunctionType == SOFTMAX) {
 				output = Math.log(1f + Math.exp(getTotal()));
 			} else if (activationFunctionType == RECTIFIER) {
 				output = getTotal() > 0f ? getTotal() : 0.1f * getTotal();
 			}
+			fired = true;
 			return output;
 		} else {
 			return output;
@@ -154,9 +159,8 @@ public class Neuron {
 
 	public double getTotal() {
 		double total = 0;
-		int index = 0;
-		for (double p : inputs) {
-			total += p * weight[index++];
+		for (int index = 0; index < inputs.length; index++) {
+			total += inputs[index] * weight[index];
 		}
 		return total + biasWeight * bias;
 	}
@@ -164,7 +168,7 @@ public class Neuron {
 	double[] getWeights() {
 		return weight;
 	}
-	
+
 	double[] getDeltas() {
 		return deltaWeight;
 	}
@@ -186,5 +190,50 @@ public class Neuron {
 	public void setBiasWeight(double d) {
 		this.biasWeight = d;
 		this.previousBiasWeight = d;
+	}
+
+	public void setDelta(double delta) {
+		this.delta = delta;
+	}
+
+	// ZERO_TOLERANCE = Math.exp(-16)
+	//
+	// def sign x
+	// if x > ZERO_TOLERANCE
+	// 1
+	// elsif x < -ZERO_TOLERANCE
+	// -1
+	// else
+	// 0 # x is zero, or a float very close to zero
+	// end
+	// end
+	public static final double TOLERANCE = Math.exp(-16);
+
+	private int sign(double s) {
+		if (s > TOLERANCE) return 1;
+		if (s < -TOLERANCE) return -1;
+		return 0;
+	}
+
+	final double MIN_STEP = Math.exp(-6), MAX_STEP = 50f;
+	
+	public void updateGradient() {
+		for(int i=0; i < this.totalConnections; i++) {
+			double gradient = -this.deltaWeight[i];
+			double previousGradient = this.previousDeltaWeight[i];
+			double weightChange = this.weightChange[i];
+			double weightUpdateValue = this.weightUpdateValue[i];
+			
+			int c = sign(gradient * previousGradient);
+			switch(c) {
+			case 1:
+                weightUpdateValue = Math.min(weightUpdateValue * 1.2, MAX_STEP);
+                weightChange = -sign(gradient) * weightUpdateValue;
+				break;
+			case -1:
+				
+			}
+		}
+		
 	}
 }

@@ -1,6 +1,5 @@
 package com.dayosoft.nn;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -9,13 +8,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
-import com.dayosoft.nn.NeuralNet.Pair;
-import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonIOException;
@@ -41,6 +36,7 @@ public class NeuralNet {
 	private int outputActivationFunctionType;
 	private int errorFormula;
 	private int gradientFormula;
+	private int maxNeuronWidth;
 
 	public NeuralNet loadStateFromJson(String jsonFile) {
 		try {
@@ -192,6 +188,8 @@ public class NeuralNet {
 		public static final int CROSS_ENTROPY = 1;
 		public static int DERIVATIVE = 1;
 		public static int CE = 2;
+		public static int STANDARD_BACKPROPAGATION = 1;
+		public static int RPROP_BACKPROPAGATION = 1;
 		public double momentumFactor;
 		public int neuronCount, inputCount, outputCount;
 		public int neuronsPerLayer;
@@ -202,6 +200,7 @@ public class NeuralNet {
 		public int outputActivationFunctionType;
 		public int errorFormula;
 		public int gradientFormula;
+		public int backPropagationAlgorithm;
 
 		public Config(int inputCount, int outputCount, int neuronCount) {
 			this.inputCount = inputCount;
@@ -216,6 +215,8 @@ public class NeuralNet {
 			this.outputActivationFunctionType = Neuron.SIGMOID;
 			this.errorFormula = Config.MEAN_SQUARED;
 			this.gradientFormula = Config.DERIVATIVE;
+			this.backPropagationAlgorithm = Config.STANDARD_BACKPROPAGATION;
+			
 		}
 	}
 
@@ -259,7 +260,7 @@ public class NeuralNet {
 		}
 		return list;
 	}
-	
+
 	public ArrayList<ArrayList<Double>> dumpBiases() {
 		ArrayList<ArrayList<Double>> biasLayer = new ArrayList<ArrayList<Double>>();
 		for (int i = 0; i < layerCount; i++) {
@@ -269,7 +270,8 @@ public class NeuralNet {
 				doubleArr.add(n.bias);
 			}
 			biasLayer.add(doubleArr);
-		};
+		}
+		;
 		return biasLayer;
 	}
 
@@ -373,7 +375,6 @@ public class NeuralNet {
 			for (Neuron n : layer) {
 				double[] weights = n.getWeights();
 				for (int i2 = 0; i2 < weights.length; i2++) {
-
 					n.setWeights(i2, range * random.nextDouble() + min);
 				}
 				n.setBiasWeight(range * random.nextDouble() + min);
@@ -384,31 +385,28 @@ public class NeuralNet {
 	public void adjustWeights(double expectedOutput[], boolean batchLearning) {
 		double deltaSum = 0;
 		// System.out.println("========== training ============");
-		for (int i = layerCount - 1; i >= 0; i--) {
+		int i2 = 0;
+		for (Neuron n : layers.get(layerCount - 1)) {
+			double errorTerm;
+			if (this.gradientFormula == Config.DERIVATIVE) {
+				errorTerm = n.derivative() * (expectedOutput[i2++] - (n.fired ? n.output : n.fire()));
+			} else {
+				errorTerm = expectedOutput[i2++] - (n.fired ? n.output : n.fire());
+			}
+			double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, batchLearning);
+			deltaSum += y;
+		}
+
+		for (int i = layerCount - 2; i >= 0; i--) {
 			// System.out.println("----------- Layer " + i + " --------------");
 			ArrayList<Neuron> layer = layers.get(i);
-			if (i == layerCount - 1) {
-				int i2 = 0;
-				for (Neuron n : layer) {
-					double errorTerm;
-					if (this.gradientFormula == Config.DERIVATIVE) {
-						errorTerm = n.derivative() * (expectedOutput[i2++] - n.fire());
-					} else {
-						errorTerm = expectedOutput[i2++] - n.fire();
-					}
-					double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, batchLearning);
-					deltaSum += y;
-				}
-			} else {
-				double currentDeltaSum = 0;
-				for (Neuron n : layer) {
-					double errorTerm = n.derivative() * deltaSum;
-					double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, batchLearning);
-					currentDeltaSum += y;
-				}
-				deltaSum = currentDeltaSum;
+			double currentDeltaSum = 0;
+			for (Neuron n : layer) {
+				double errorTerm = n.derivative() * deltaSum;
+				double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, batchLearning);
+				currentDeltaSum += y;
 			}
-
+			deltaSum = currentDeltaSum;
 		}
 	}
 
@@ -427,19 +425,28 @@ public class NeuralNet {
 		this.outputActivationFunctionType = config.outputActivationFunctionType;
 		this.errorFormula = config.errorFormula;
 		this.gradientFormula = config.gradientFormula;
+		this.maxNeuronWidth = surface;
+
+		if (config.neuronsPerLayer > maxNeuronWidth) {
+			maxNeuronWidth = neuronsPerLayer;
+		}
+
+		if (config.outputCount > maxNeuronWidth) {
+			maxNeuronWidth = outputCount;
+		}
 
 		if (neurons % config.neuronsPerLayer != 0) {
 			this.layerCount += 1;
 		}
 
-		System.out.println("creating " + this.layerCount + " layers ");
-		System.out.println("Learning Rate " + this.learningRate);
+		// System.out.println("creating " + this.layerCount + " layers ");
+		// System.out.println("Learning Rate " + this.learningRate);
 
-		if (this.activationFunctionType == Neuron.HTAN) {
-			System.out.println("Using Hyperbolic Tan()");
-		} else {
-			System.out.println("Using Symboid()");
-		}
+		// if (this.activationFunctionType == Neuron.HTAN) {
+		// System.out.println("Using Hyperbolic Tan()");
+		// } else {
+		// System.out.println("Using Symboid()");
+		// }
 		for (int i = 0; i < layerCount; i++) {
 			ArrayList<Neuron> aLayer = new ArrayList<>();
 			Neuron neuron;
@@ -471,62 +478,63 @@ public class NeuralNet {
 
 	public double[] feed(double inputs[]) {
 		double output[] = new double[outputCount];
-
 		for (Neuron n : allNeurons) {
-			n.reset();
+			n.fired = false;
 		}
-		ArrayList<Double> currentFireList = null;
-		for (int currentLayer = 0; currentLayer < layerCount; currentLayer++) {
-			ArrayList<Neuron> thisLayer = layers.get(currentLayer);
-			if (currentLayer == 0) {
-				ArrayList<Double> fireList = new ArrayList<Double>();
-				int index = 0;
-				for (double input : inputs) {
-					for (Neuron neuron : thisLayer) {
-						neuron.setInput(index, input);
-					}
-					index++;
-				}
 
-				for (Neuron neuron : thisLayer) {
-					fireList.add(neuron.fire());
-				}
-				currentFireList = fireList;
-			} else if (currentLayer == layerCount - 1) {
-				setInputs(currentFireList, thisLayer);
-				int index = 0;
-				for (Neuron n : thisLayer) {
-					output[index++] = n.fire();
-				}
-			} else {
-				ArrayList<Double> fireList = setInputs(currentFireList, thisLayer);
-				for (Neuron neuron : thisLayer) {
-					fireList.add(neuron.fire());
-				}
-				currentFireList = fireList;
+		double layerOutputs[] = new double[maxNeuronWidth];
+
+		ArrayList<Neuron> thisLayer = layers.get(0);
+		int currentFireListSize = thisLayer.size();
+
+		for (int index = 0; index < inputs.length; index++) {
+			for (Neuron neuron : thisLayer) {
+				neuron.setInput(index, inputs[index]);
 			}
 		}
+
+		fireLayer(layerOutputs, thisLayer);
+
+		for (int currentLayer = 1; currentLayer < layerCount - 1; currentLayer++) {
+			thisLayer = layers.get(currentLayer);
+			setInputs(layerOutputs, currentFireListSize, thisLayer);
+			currentFireListSize = thisLayer.size();
+			fireLayer(layerOutputs, thisLayer);
+		}
+
+		thisLayer = layers.get(layerCount - 1);
+		setInputs(layerOutputs, currentFireListSize, thisLayer);
+		fireLayer(output, thisLayer);
+
 		return output;
 	}
 
-	private ArrayList<Double> setInputs(ArrayList<Double> currentFireList, ArrayList<Neuron> thisLayer) {
-		int index = 0;
-		ArrayList<Double> fireList = new ArrayList<Double>();
-		for (double fOutputs : currentFireList) {
-			for (Neuron neuron : thisLayer) {
-				neuron.setInput(index, fOutputs);
-			}
-			index++;
+	private void fireLayer(double[] fireList, ArrayList<Neuron> thisLayer) {
+		for (int index = 0; index < thisLayer.size(); index++) {
+			Neuron neuron = thisLayer.get(index);
+			fireList[index] = neuron.fired ? neuron.output : neuron.fire();
 		}
-		return fireList;
+	}
+
+	private void setInputs(double[] currentFireList, int size, ArrayList<Neuron> thisLayer) {
+		for (int index = 0; index < size; index++) {
+			for (Neuron neuron : thisLayer) {
+				neuron.setInput(index, currentFireList[index]);
+			}
+		}
 	}
 
 	public double computeAcccuracy(double output[], double expectedOutput[]) {
 		double difference = 0;
 		if (this.errorFormula == Config.MEAN_SQUARED) {
-			for (int i = 0; i < output.length; i++) { difference += 0.5f * Math.pow(expectedOutput[i] - output[i], 2); };
+			for (int i = 0; i < output.length; i++) {
+				difference += expectedOutput[i] - output[i];
+			}
+			return Math.pow(difference, 2);
 		} else if (this.errorFormula == Config.CROSS_ENTROPY) {
-			for (int i = 0; i < output.length; i++) { difference += Math.log(output[i]) * expectedOutput[i]; };
+			for (int i = 0; i < output.length; i++) {
+				difference += Math.log(output[i]) * expectedOutput[i];
+			}
 		}
 		return difference;
 	}
@@ -547,61 +555,71 @@ public class NeuralNet {
 		input.set(i, a);
 	}
 
-	public Pair<Integer, Double> optimize(ArrayList<double[]> in, ArrayList<double[]> exp, double target, int max_epochs, boolean batchLearning,
-			OptimizationListener listener) {
+	public Pair<Integer, Double> optimize(ArrayList<double[]> in, ArrayList<double[]> exp, double target, int maxEpochs,
+			int callBackInterval, boolean batchLearning, OptimizationListener listener) {
+		@SuppressWarnings("unchecked")
 		ArrayList<double[]> inputs = (ArrayList<double[]>) in.clone();
+		@SuppressWarnings("unchecked")
 		ArrayList<double[]> expected = (ArrayList<double[]>) exp.clone();
 		ArrayList<double[]> results = new ArrayList<double[]>();
 
 		long startTime = System.currentTimeMillis();
-		
+
 		int i = 0;
 		double totalErrors = 0;
 		Random rnd = ThreadLocalRandom.current();
+
 		
-		for (i = 0; i < max_epochs; i++) {
-			int index = 0;
+		return performStandardBackPropagation(target, maxEpochs, callBackInterval, batchLearning, listener, inputs,
+				expected, results, startTime, totalErrors, rnd);
+	}
+
+	private Pair<Integer, Double> performStandardBackPropagation(double target, int maxEpochs, int callBackInterval,
+			boolean batchLearning, OptimizationListener listener, ArrayList<double[]> inputs,
+			ArrayList<double[]> expected, ArrayList<double[]> results, long startTime, double totalErrors, Random rnd) {
+		int i;
+		for (i = 0; i < maxEpochs; i++) {
 			// System.out.println("adjusting weights.");
 			results.clear();
 			shuffleArray(rnd, inputs, expected);
+
+			int index = 0;
+			
 			for (double[] input : inputs) {
 				double[] output = feed(input);
+				results.add(output);
 				adjustWeights(expected.get(index++), batchLearning);
-				if (i % 1000 == 0) {
-					results.add(output);
-				}
 			}
 
-			if (batchLearning) {
-				updateWeights();
-				if (i % 1000 == 0) {
-					results.clear();
-					for (double[] input : inputs) {
-						double[] output = feed(input);
-						results.add(output);
-					}
-				}
+
+			totalErrors = getTotalError(expected, results);
+
+			if (totalErrors < target && (i > 10) ) {
+				return new Pair<Integer, Double>(i + 1, totalErrors);
 			}
 
-			if (i % 1000 == 0) {
+			if (i % callBackInterval == 0) {
 				long endTime = System.currentTimeMillis();
 				long elapsed = endTime - startTime;
 				startTime = System.currentTimeMillis();
-				totalErrors = 0;
-				index = 0;
-				for (double[] output : results) {
-					totalErrors += computeAcccuracy(output, expected.get(index++));
-				}
-				totalErrors = totalErrors / index;
+
 				if (listener != null) {
-					listener.checkpoint(i, totalErrors);
+					listener.checkpoint(i, totalErrors, elapsed);
 				}
-				if (totalErrors < target) {
-					return new Pair<Integer,Double>(i, totalErrors);
-				}
+
 			}
 		}
-		return new Pair<Integer,Double>(i, totalErrors);
+		return new Pair<Integer, Double>(i + 1, totalErrors);
+	}
+
+	private double getTotalError(ArrayList<double[]> expected, ArrayList<double[]> results) {
+		double totalErrors = 0;
+		int index = 0;
+		for (double[] output : results) {
+			totalErrors += computeAcccuracy(output, expected.get(index++));
+		}
+
+		return totalErrors / results.size();
 	}
 
 	private void updateWeights() {
@@ -611,7 +629,17 @@ public class NeuralNet {
 			}
 		}
 	}
-
+	
+	private void updateWeightsRprop() {
+		final double MIN_STEP = Math.exp(-6), MAX_STEP = 50f;
+		
+		for(int index = 0; index < this.layerCount - 1; index++) {
+			for(Neuron n : this.layers.get(index)) {
+				n.updateGradient();
+			}
+		}
+	}
+	
 	public String round(double val) {
 		DecimalFormat df = new DecimalFormat("#.##########");
 		df.setRoundingMode(RoundingMode.CEILING);
