@@ -15,7 +15,7 @@ public class Neuron {
 	int activationFunctionType = SIGMOID;
 	int totalConnections;
 	private double weight[];
-	double biasWeight = 1f;
+	double biasWeight = 0f;
 	private double previousWeight[];
 
 	// for batch learning
@@ -23,8 +23,10 @@ public class Neuron {
 	private double previousDeltaWeight[];
 	private double weightUpdateValue[];
 	private double weightChange[];
-	private double deltaBias = 0.0f;
+	protected double deltaBias = 0.0f;
 	private double previousDeltaBias = 0.0f;
+	private double biasUpdateValue = 0.0f;
+	private double biasChange = 0.0f;
 	private double inputs[];
 
 	protected boolean fired = false;
@@ -32,7 +34,6 @@ public class Neuron {
 
 	private int id;
 	private int layer;
-	private double delta = 0.0f;
 
 	public int getId() {
 		return id;
@@ -52,23 +53,39 @@ public class Neuron {
 		this.previousWeight = new double[connections];
 		this.deltaWeight = new double[connections];
 		this.previousDeltaWeight = new double[connections];
-		this.weightUpdateValue = new double[conntections];
+		this.weightUpdateValue = new double[connections];
 		this.weightChange = new double[connections];
 		this.setWeights(new double[connections]);
 		this.deltaBias = 0.0f;
 		this.previousDeltaBias = 0.0f;
+		this.biasChange = 0.0f;
+		this.biasUpdateValue = 0.1f;
 		for (int i = 0; i < connections; i++) {
-			weight[i] = 0.01f;
-			previousWeight[i] = 0.01f;
+			weight[i] = 0.00f;
+			previousWeight[i] = 0.00f;
 			deltaWeight[i] = 0.0f;
 			previousDeltaWeight[i] = 0.0f;
 			weightChange[i] = 0.0f;
-			weightUpdateValue[i] = 0.0f;
+			weightUpdateValue[i] = 0.1f;
+		}
+	}
+
+	public void resetAllDeltas() {
+		this.deltaBias = 0.0f;
+		this.biasChange = 0.0f;
+		this.biasUpdateValue = 0.1f;
+		for (int i = 0; i < totalConnections; i++) {
+			deltaWeight[i] = 0.0f;
+			previousWeight[i] = 0.00f;
+			deltaWeight[i] = 0.0f;
+			previousDeltaWeight[i] = 0.0f;
+			weightChange[i] = 0.0f;
+			weightUpdateValue[i] = 0.1f;
 		}
 	}
 
 	public void resetDeltas() {
-		this.deltaBias = 0.0f;
+		deltaBias = 0.0f;
 		for (int i = 0; i < totalConnections; i++) {
 			deltaWeight[i] = 0.0f;
 		}
@@ -76,13 +93,27 @@ public class Neuron {
 
 	public void reset() {
 		output = 0.0f;
-		delta = 0.0f;
 		fired = false;
 	}
 
 	public void setInput(int id, double value) {
 		inputs[id] = value;
 	};
+
+	public double computeForDelta(double errorTerm) {
+		double sum = 0;
+		for (int index = 0; index < inputs.length; index++) {
+			double delta = errorTerm * inputs[index];
+			sum += errorTerm * weight[index];
+			deltaWeight[index] += delta;
+			System.out.println("g " +deltaWeight[index]);
+		}
+
+		sum += errorTerm * this.biasWeight;
+		this.deltaBias += errorTerm;
+		System.out.println("g " +deltaBias);
+		return sum;
+	}
 
 	public double adjustForOutput(double errorTerm, double learningRate, double momentum, boolean deltaOnly) {
 		double sum = 0;
@@ -91,22 +122,23 @@ public class Neuron {
 			sum += errorTerm * weight[index];
 			double pw = weight[index];
 			double delta = e * inputs[index] + momentum * (weight[index] - previousWeight[index]);
-			if (!deltaOnly) {
+			if (deltaOnly) {
+				deltaWeight[index] += fire() * delta;
+			} else {
 				previousWeight[index] = pw;
 				weight[index] += delta;
-			} else {
-				deltaWeight[index] += delta;
 			}
 		}
+
 		// update bias weight
 		sum += errorTerm * this.biasWeight * this.bias;
 		double pBW = this.biasWeight;
 		double deltaBias = e * this.bias + momentum * (biasWeight - previousBiasWeight);
-		if (!deltaOnly) {
+		if (deltaOnly) {
+			this.deltaBias += fire() * deltaBias;
+		} else {
 			this.biasWeight += deltaBias;
 			this.previousBiasWeight = pBW;
-		} else {
-			this.deltaBias += deltaBias;
 		}
 		return sum;
 	}
@@ -120,6 +152,17 @@ public class Neuron {
 		this.previousBiasWeight = this.biasWeight;
 		this.biasWeight += this.deltaBias;
 		this.deltaBias = 0.0f;
+	}
+
+	public double incrementDelta(double value) {
+		double sumDeltaWeights = 0;
+		for (int i = 0; i < this.totalConnections; i++) {
+			this.deltaWeight[i] += fire() * value;
+			sumDeltaWeights += value * weight[i];
+		}
+
+		this.deltaBias += value;
+		return sumDeltaWeights + (value * bias);
 	}
 
 	public double derivative() {
@@ -192,48 +235,63 @@ public class Neuron {
 		this.previousBiasWeight = d;
 	}
 
-	public void setDelta(double delta) {
-		this.delta = delta;
-	}
-
-	// ZERO_TOLERANCE = Math.exp(-16)
-	//
-	// def sign x
-	// if x > ZERO_TOLERANCE
-	// 1
-	// elsif x < -ZERO_TOLERANCE
-	// -1
-	// else
-	// 0 # x is zero, or a float very close to zero
-	// end
-	// end
 	public static final double TOLERANCE = Math.exp(-16);
 
 	private int sign(double s) {
-		if (s > TOLERANCE) return 1;
-		if (s < -TOLERANCE) return -1;
+		if (s > TOLERANCE)
+			return 1;
+		if (s < -TOLERANCE)
+			return -1;
 		return 0;
 	}
 
 	final double MIN_STEP = Math.exp(-6), MAX_STEP = 50f;
-	
+
 	public void updateGradient() {
-		for(int i=0; i < this.totalConnections; i++) {
+		for (int i = 0; i < this.totalConnections; i++) {
 			double gradient = -this.deltaWeight[i];
 			double previousGradient = this.previousDeltaWeight[i];
 			double weightChange = this.weightChange[i];
 			double weightUpdateValue = this.weightUpdateValue[i];
-			
-			int c = sign(gradient * previousGradient);
-			switch(c) {
-			case 1:
-                weightUpdateValue = Math.min(weightUpdateValue * 1.2, MAX_STEP);
-                weightChange = -sign(gradient) * weightUpdateValue;
-				break;
-			case -1:
-				
-			}
+//
+//			System.out.println(
+//					i + "-> " + gradient + " " + previousGradient + " " + weightChange + " " + weightUpdateValue);
+			applyRPropUpdates(i, gradient, previousGradient, weightChange, weightUpdateValue);
 		}
-		
+
+		applyRPropUpdates(-1, -this.deltaBias, this.previousDeltaBias, this.biasChange, this.biasUpdateValue);
+	}
+
+	private void applyRPropUpdates(int i, double gradient, double previousGradient, double weightChange,
+			double weightUpdateValue) {
+		int c = sign(gradient * previousGradient);
+
+		switch (c) {
+		case 1:
+			weightUpdateValue = Math.min(weightUpdateValue * 1.2, MAX_STEP);
+			weightChange = ((double) -sign(gradient)) * weightUpdateValue;
+			break;
+		case -1:
+			weightUpdateValue = Math.max(weightUpdateValue * 0.5, MIN_STEP);
+			weightChange = -weightChange; // roll back previous weight change
+			gradient = 0; // so won't trigger sign change on next update
+			break;
+		case 0:
+			weightChange = ((double) -sign(gradient)) * weightUpdateValue;
+		}
+
+		if (i == -1) {
+			this.bias += weightChange;
+			this.biasChange = weightChange;
+			this.biasUpdateValue = weightUpdateValue;
+			this.previousDeltaBias = gradient;
+			System.out.println(this.bias);
+		} else {
+			this.weight[i] += weightChange;
+			this.weightChange[i] = weightChange;
+			this.weightUpdateValue[i] = weightUpdateValue;
+			this.previousDeltaWeight[i] = gradient;
+			System.out.println(this.weight[i] + " " + weightChange);
+		}
 	}
 }

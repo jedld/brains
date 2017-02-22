@@ -185,11 +185,11 @@ public class NeuralNet {
 
 	public static class Config {
 		public static final int MEAN_SQUARED = 1;
-		public static final int CROSS_ENTROPY = 1;
+		public static final int CROSS_ENTROPY = 2;
 		public static int DERIVATIVE = 1;
 		public static int CE = 2;
 		public static int STANDARD_BACKPROPAGATION = 1;
-		public static int RPROP_BACKPROPAGATION = 1;
+		public static int RPROP_BACKPROPAGATION = 2;
 		public double momentumFactor;
 		public int neuronCount, inputCount, outputCount;
 		public int neuronsPerLayer;
@@ -206,7 +206,7 @@ public class NeuralNet {
 			this.inputCount = inputCount;
 			this.neuronCount = neuronCount;
 			this.outputCount = outputCount;
-			this.bias = 0f;
+			this.bias = 1f;
 			this.outputBias = 0f;
 			this.learningRate = 0.02f;
 			this.neuronsPerLayer = 3;
@@ -216,7 +216,7 @@ public class NeuralNet {
 			this.errorFormula = Config.MEAN_SQUARED;
 			this.gradientFormula = Config.DERIVATIVE;
 			this.backPropagationAlgorithm = Config.STANDARD_BACKPROPAGATION;
-			
+
 		}
 	}
 
@@ -271,8 +271,33 @@ public class NeuralNet {
 			}
 			biasLayer.add(doubleArr);
 		}
-		;
 		return biasLayer;
+	}
+	
+	public ArrayList<ArrayList<double[]>> dumpDeltas() {
+		ArrayList<ArrayList<double[]>> list = new ArrayList<ArrayList<double[]>>();
+		for (int i = 0; i < layerCount; i++) {
+			ArrayList<Neuron> layer = layers.get(i);
+			ArrayList<double[]> doubleArr = new ArrayList<double[]>();
+			for (Neuron n : layer) {
+				doubleArr.add(n.getDeltas().clone());
+			}
+			list.add(doubleArr);
+		}
+		return list;
+	}
+	
+	public ArrayList<ArrayList<Double>> dumpDeltaBiases() {
+		ArrayList<ArrayList<Double>> list = new ArrayList<ArrayList<Double>>();
+		for (int i = 0; i < layerCount; i++) {
+			ArrayList<Neuron> layer = layers.get(i);
+			ArrayList<Double> doubleArr = new ArrayList<Double>();
+			for (Neuron n : layer) {
+				doubleArr.add(n.deltaBias);
+			}
+			list.add(doubleArr);
+		}
+		return list;
 	}
 
 	public int getNeurons() {
@@ -382,7 +407,48 @@ public class NeuralNet {
 		}
 	}
 
-	public void adjustWeights(double expectedOutput[], boolean batchLearning) {
+	public void computeGradients2(double expectedOutput[]) {
+		int i2 = 0;
+		double previousLayerDelta = 0;
+		for (Neuron n : layers.get(layerCount - 1)) {
+			double delta = n.derivative() * (expectedOutput[i2++] - n.fire());
+			previousLayerDelta += n.incrementDelta(delta);
+		}
+		
+		for (int i = layerCount - 2; i >= 0; i--) {
+			ArrayList<Neuron> layer = layers.get(i);
+			double error = previousLayerDelta;
+			previousLayerDelta = 0;
+			for(Neuron n: layer) {
+				double delta = n.derivative() * error;
+				previousLayerDelta += n.incrementDelta(delta);
+			}
+		}
+	}
+	
+	public void computeGradients(double expectedOutput[]) {
+		double deltaSum = 0;
+		// System.out.println("========== training ============");
+		int i2 = 0;
+		for (Neuron n : layers.get(layerCount - 1)) {
+			double errorTerm = n.derivative() * -(n.fire() - expectedOutput[i2++]);
+			deltaSum += n.computeForDelta(errorTerm);
+		}
+
+		for (int i = layerCount - 2; i >= 0; i--) {
+			// System.out.println("----------- Layer " + i + " --------------");
+			ArrayList<Neuron> layer = layers.get(i);
+			double currentDeltaSum = 0;
+			for (Neuron n : layer) {
+				double errorTerm = n.derivative() * deltaSum;
+				currentDeltaSum +=  n.computeForDelta(errorTerm);
+			}
+			deltaSum = currentDeltaSum;
+		}
+	}
+	
+	
+	public void adjustWeights(double expectedOutput[]) {
 		double deltaSum = 0;
 		// System.out.println("========== training ============");
 		int i2 = 0;
@@ -393,7 +459,7 @@ public class NeuralNet {
 			} else {
 				errorTerm = expectedOutput[i2++] - (n.fired ? n.output : n.fire());
 			}
-			double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, batchLearning);
+			double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, false);
 			deltaSum += y;
 		}
 
@@ -403,7 +469,7 @@ public class NeuralNet {
 			double currentDeltaSum = 0;
 			for (Neuron n : layer) {
 				double errorTerm = n.derivative() * deltaSum;
-				double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, batchLearning);
+				double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, false);
 				currentDeltaSum += y;
 			}
 			deltaSum = currentDeltaSum;
@@ -555,8 +621,9 @@ public class NeuralNet {
 		input.set(i, a);
 	}
 
-	public Pair<Integer, Double> optimize(ArrayList<double[]> in, ArrayList<double[]> exp, double target, int maxEpochs,
-			int callBackInterval, boolean batchLearning, OptimizationListener listener) {
+	public Pair<Integer, Double> optimize(ArrayList<double[]> in,
+			ArrayList<double[]> exp, double target, int maxEpochs,
+			int callBackInterval, OptimizationListener listener) {
 		@SuppressWarnings("unchecked")
 		ArrayList<double[]> inputs = (ArrayList<double[]>) in.clone();
 		@SuppressWarnings("unchecked")
@@ -564,19 +631,25 @@ public class NeuralNet {
 		ArrayList<double[]> results = new ArrayList<double[]>();
 
 		long startTime = System.currentTimeMillis();
-
-		int i = 0;
 		double totalErrors = 0;
-		Random rnd = ThreadLocalRandom.current();
 
-		
-		return performStandardBackPropagation(target, maxEpochs, callBackInterval, batchLearning, listener, inputs,
-				expected, results, startTime, totalErrors, rnd);
+		if (this.config.backPropagationAlgorithm == Config.STANDARD_BACKPROPAGATION) {
+			return performStandardBackPropagation(target, maxEpochs, callBackInterval, listener, inputs,
+					expected, results, startTime, totalErrors);
+		} else if (this.config.backPropagationAlgorithm == Config.RPROP_BACKPROPAGATION) {
+			return performRPropagation(target, maxEpochs, callBackInterval, listener, inputs, expected,
+					results, startTime, totalErrors);
+		}
+		return null;
 	}
 
 	private Pair<Integer, Double> performStandardBackPropagation(double target, int maxEpochs, int callBackInterval,
-			boolean batchLearning, OptimizationListener listener, ArrayList<double[]> inputs,
-			ArrayList<double[]> expected, ArrayList<double[]> results, long startTime, double totalErrors, Random rnd) {
+			OptimizationListener listener, ArrayList<double[]> inputs,
+			ArrayList<double[]> expected, ArrayList<double[]> results,
+			long startTime, double totalErrors) {
+
+		Random rnd = new Random();
+		rnd.setSeed(1234567);
 		int i;
 		for (i = 0; i < maxEpochs; i++) {
 			// System.out.println("adjusting weights.");
@@ -584,17 +657,61 @@ public class NeuralNet {
 			shuffleArray(rnd, inputs, expected);
 
 			int index = 0;
+
+			for (double[] input : inputs) {
+				double[] output = feed(input);
+				results.add(output);
+				adjustWeights(expected.get(index++));
+			}
+
+			totalErrors = getTotalError(expected, results);
+
+			if (totalErrors < target && (i > 10)) {
+				return new Pair<Integer, Double>(i + 1, totalErrors);
+			}
+
+			if (i % callBackInterval == 0) {
+				long endTime = System.currentTimeMillis();
+				long elapsed = endTime - startTime;
+				startTime = System.currentTimeMillis();
+
+				if (listener != null) {
+					listener.checkpoint(i, totalErrors, elapsed);
+				}
+
+			}
+		}
+		return new Pair<Integer, Double>(i + 1, totalErrors);
+	}
+
+	private Pair<Integer, Double> performRPropagation(double target, int maxEpochs, int callBackInterval,
+			OptimizationListener listener, ArrayList<double[]> inputs,
+			ArrayList<double[]> expected, ArrayList<double[]> results,
+			long startTime, double totalErrors) {
+		Random rnd = new Random();
+		rnd.setSeed(1234567);
+		int i;
+		resetAllDeltas();
+		for (i = 0; i < maxEpochs; i++) {
+			// System.out.println("adjusting weights.");
+			results.clear();
+			resetDeltas();
+			
+			shuffleArray(rnd, inputs, expected);
+
+			int index = 0;
 			
 			for (double[] input : inputs) {
 				double[] output = feed(input);
 				results.add(output);
-				adjustWeights(expected.get(index++), batchLearning);
+				computeGradients(expected.get(index++));
 			}
-
+			
+			updateWeightsRprop();
 
 			totalErrors = getTotalError(expected, results);
 
-			if (totalErrors < target && (i > 10) ) {
+			if (totalErrors < target) {
 				return new Pair<Integer, Double>(i + 1, totalErrors);
 			}
 
@@ -621,25 +738,31 @@ public class NeuralNet {
 
 		return totalErrors / results.size();
 	}
-
-	private void updateWeights() {
+	
+	private void resetDeltas() {
 		for (ArrayList<Neuron> layer : this.layers) {
 			for (Neuron n : layer) {
-				n.applyDelta();
+				n.resetDeltas();
 			}
 		}
 	}
 	
+	private void resetAllDeltas() {
+		for (ArrayList<Neuron> layer : this.layers) {
+			for (Neuron n : layer) {
+				n.resetAllDeltas();
+			}
+		}
+	}
+
 	private void updateWeightsRprop() {
-		final double MIN_STEP = Math.exp(-6), MAX_STEP = 50f;
-		
-		for(int index = 0; index < this.layerCount - 1; index++) {
-			for(Neuron n : this.layers.get(index)) {
+		for (int index = 0; index < this.layerCount - 1; index++) {
+			for (Neuron n : this.layers.get(index)) {
 				n.updateGradient();
 			}
 		}
 	}
-	
+
 	public String round(double val) {
 		DecimalFormat df = new DecimalFormat("#.##########");
 		df.setRoundingMode(RoundingMode.CEILING);
