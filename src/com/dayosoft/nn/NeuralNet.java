@@ -37,6 +37,7 @@ public class NeuralNet {
 	private int errorFormula;
 	private int gradientFormula;
 	private int maxNeuronWidth;
+	private boolean isRecurrent = false;
 
 	public NeuralNet loadStateFromJson(String jsonFile) {
 		try {
@@ -54,11 +55,23 @@ public class NeuralNet {
 		return null;
 	}
 
+	public static NeuralNet loadStateFromJsonString(NeuralNet nn, String jsonString)
+			throws JsonIOException, JsonSyntaxException, FileNotFoundException {
+		JsonParser parser = new JsonParser();
+		JsonElement output = parser.parse(jsonString);
+
+		return parseState(nn, output);
+	}
+
 	public static NeuralNet loadStateFromJson(NeuralNet nn, String jsonFile)
 			throws JsonIOException, JsonSyntaxException, FileNotFoundException {
 		JsonParser parser = new JsonParser();
 		JsonElement output = parser.parse(new FileReader(jsonFile));
 
+		return parseState(nn, output);
+	}
+
+	private static NeuralNet parseState(NeuralNet nn, JsonElement output) {
 		JsonObject rootElement = output.getAsJsonObject();
 		JsonArray layers = rootElement.get("neurons").getAsJsonArray();
 		int inputCount = rootElement.get("surface").getAsInt();
@@ -75,6 +88,8 @@ public class NeuralNet {
 		config.gradientFormula = rootElement.get("gradientFormula").getAsInt();
 		config.outputBias = rootElement.get("outputBias").getAsDouble();
 		config.gradientFormula = rootElement.get("gradientFormula").getAsInt();
+		config.isRecurrent = rootElement.get("isRecurrent") != null ? rootElement.get("isRecurrent").getAsBoolean()
+				: false;
 
 		ArrayList<ArrayList<double[]>> weights = new ArrayList<ArrayList<double[]>>();
 		ArrayList<ArrayList<Double>> biasWeights = new ArrayList<ArrayList<Double>>();
@@ -118,6 +133,7 @@ public class NeuralNet {
 		jsonObject.addProperty("outputBias", new BigDecimal(outputBias));
 		jsonObject.addProperty("activationFunction", activationFunctionType);
 		jsonObject.addProperty("outputActivationFunctionType", outputActivationFunctionType);
+		jsonObject.addProperty("isRecurrent", isRecurrent);
 
 		JsonArray layerArray = new JsonArray();
 		jsonObject.add("neurons", layerArray);
@@ -130,9 +146,15 @@ public class NeuralNet {
 				for (double d : n.getWeights()) {
 					w.add(d);
 				}
+				
 				nObj.addProperty("bias", n.bias);
 				nObj.addProperty("biasWeight", n.biasWeight);
 				nObj.add("weights", w);
+				
+				if (config.isRecurrent) {
+					nObj.addProperty("previousWeight", n.getPreviousOutput());
+				}
+
 				neuronLayer.add(nObj);
 			}
 			layerArray.add(neuronLayer);
@@ -188,8 +210,8 @@ public class NeuralNet {
 		public static final int CROSS_ENTROPY = 2;
 		public static int DERIVATIVE = 1;
 		public static int CE = 2;
-		public static int STANDARD_BACKPROPAGATION = 1;
-		public static int RPROP_BACKPROPAGATION = 2;
+		public static final int STANDARD_BACKPROPAGATION = 1;
+		public static final int RPROP_BACKPROPAGATION = 2;
 		public double momentumFactor;
 		public int neuronCount, inputCount, outputCount;
 		public int neuronsPerLayer;
@@ -201,6 +223,7 @@ public class NeuralNet {
 		public int errorFormula;
 		public int gradientFormula;
 		public int backPropagationAlgorithm;
+		public boolean isRecurrent = false;
 
 		public Config(int inputCount, int outputCount, int neuronCount) {
 			this.inputCount = inputCount;
@@ -216,7 +239,7 @@ public class NeuralNet {
 			this.errorFormula = Config.MEAN_SQUARED;
 			this.gradientFormula = Config.DERIVATIVE;
 			this.backPropagationAlgorithm = Config.STANDARD_BACKPROPAGATION;
-
+			this.isRecurrent = false;
 		}
 	}
 
@@ -273,7 +296,7 @@ public class NeuralNet {
 		}
 		return biasLayer;
 	}
-	
+
 	public ArrayList<ArrayList<double[]>> dumpDeltas() {
 		ArrayList<ArrayList<double[]>> list = new ArrayList<ArrayList<double[]>>();
 		for (int i = 0; i < layerCount; i++) {
@@ -286,7 +309,7 @@ public class NeuralNet {
 		}
 		return list;
 	}
-	
+
 	public ArrayList<ArrayList<Double>> dumpDeltaBiases() {
 		ArrayList<ArrayList<Double>> list = new ArrayList<ArrayList<Double>>();
 		for (int i = 0; i < layerCount; i++) {
@@ -414,18 +437,18 @@ public class NeuralNet {
 			double delta = n.derivative() * (expectedOutput[i2++] - n.fire());
 			previousLayerDelta += n.incrementDelta(delta);
 		}
-		
+
 		for (int i = layerCount - 2; i >= 0; i--) {
 			ArrayList<Neuron> layer = layers.get(i);
 			double error = previousLayerDelta;
 			previousLayerDelta = 0;
-			for(Neuron n: layer) {
+			for (Neuron n : layer) {
 				double delta = n.derivative() * error;
 				previousLayerDelta += n.incrementDelta(delta);
 			}
 		}
 	}
-	
+
 	public void computeGradients(double expectedOutput[]) {
 		double deltaSum = 0;
 		// System.out.println("========== training ============");
@@ -441,19 +464,23 @@ public class NeuralNet {
 			double currentDeltaSum = 0;
 			for (Neuron n : layer) {
 				double errorTerm = n.derivative() * deltaSum;
-				currentDeltaSum +=  n.computeForDelta(errorTerm);
+				currentDeltaSum += n.computeForDelta(errorTerm);
 			}
 			deltaSum = currentDeltaSum;
 		}
 	}
-	
-	
-	public void adjustWeights(double expectedOutput[]) {
+
+	public void adjustWeights(int index, double expectedOutput[]) {
 		double deltaSum = 0;
 		// System.out.println("========== training ============");
 		int i2 = 0;
 		for (Neuron n : layers.get(layerCount - 1)) {
 			double errorTerm;
+			
+			if (this.config.isRecurrent) {
+				n.setRecordedInput(index);
+			}
+			
 			if (this.gradientFormula == Config.DERIVATIVE) {
 				errorTerm = n.derivative() * (expectedOutput[i2++] - (n.fired ? n.output : n.fire()));
 			} else {
@@ -492,6 +519,7 @@ public class NeuralNet {
 		this.errorFormula = config.errorFormula;
 		this.gradientFormula = config.gradientFormula;
 		this.maxNeuronWidth = surface;
+		this.isRecurrent = config.isRecurrent;
 
 		if (config.neuronsPerLayer > maxNeuronWidth) {
 			maxNeuronWidth = neuronsPerLayer;
@@ -518,20 +546,22 @@ public class NeuralNet {
 			Neuron neuron;
 			if (i == 0) {
 				for (int i2 = 0; i2 < config.neuronsPerLayer; i2++) {
-					neuron = new Neuron(i2, i, config.inputCount, config.bias, this.activationFunctionType);
+					neuron = new Neuron(i2, i, config.inputCount, config.bias, config.isRecurrent,
+							this.activationFunctionType);
 					aLayer.add(neuron);
 					allNeurons.add(neuron);
 				}
 			} else if (i == layerCount - 1) {
 				for (int i2 = 0; i2 < outputCount; i2++) {
-					neuron = new Neuron(i2, i, config.neuronsPerLayer, config.outputBias,
+					neuron = new Neuron(i2, i, config.neuronsPerLayer, config.outputBias, config.isRecurrent,
 							this.outputActivationFunctionType);
 					aLayer.add(neuron);
 					allNeurons.add(neuron);
 				}
 			} else {
 				for (int i2 = 0; i2 < config.neuronsPerLayer; i2++) {
-					neuron = new Neuron(i2, i, config.neuronsPerLayer, config.bias, this.activationFunctionType);
+					neuron = new Neuron(i2, i, config.neuronsPerLayer, config.bias, config.isRecurrent,
+							this.activationFunctionType);
 					aLayer.add(neuron);
 					allNeurons.add(neuron);
 				}
@@ -543,9 +573,31 @@ public class NeuralNet {
 	}
 
 	public double[] feed(double inputs[]) {
+		return feed(inputs, true);
+	}
+	
+	public double[] feed(ArrayList<double[]> lines) {
+		double[] result = feed(lines.get(0), true);
+		for(int i = 1; i < lines.size(); i++) {
+			result = feed(lines.get(i), false);
+		}
+		
+		return result;
+	}
+	
+	/**
+	 * Evaluate the neural net function
+	 * @param inputs
+	 * @param reset
+	 * @return
+	 */
+	public double[] feed(double inputs[], boolean reset) {
 		double output[] = new double[outputCount];
 		for (Neuron n : allNeurons) {
 			n.fired = false;
+			if (reset && config.isRecurrent) {
+				n.resetRecurrenceStates();
+			}
 		}
 
 		double layerOutputs[] = new double[maxNeuronWidth];
@@ -606,7 +658,7 @@ public class NeuralNet {
 	}
 
 	// Implementing Fisher–Yates shuffle
-	void shuffleArray(Random rnd, ArrayList<double[]> input, ArrayList<double[]> output) {
+	void shuffleArray(Random rnd, ArrayList input, ArrayList output) {
 		for (int i = input.size() - 1; i > 0; i--) {
 			int index = rnd.nextInt(i + 1);
 			// Simple swap
@@ -615,14 +667,13 @@ public class NeuralNet {
 		}
 	}
 
-	private void swapElement(ArrayList<double[]> input, int i, int index) {
-		double[] a = input.get(index);
+	private void swapElement(ArrayList<Object> input, int i, int index) {
+		Object a = input.get(index);
 		input.set(index, input.get(i));
 		input.set(i, a);
 	}
 
-	public Pair<Integer, Double> optimize(ArrayList<double[]> in,
-			ArrayList<double[]> exp, double target, int maxEpochs,
+	public Pair<Integer, Double> optimize(ArrayList<double[]> in, ArrayList<double[]> exp, double target, int maxEpochs,
 			int callBackInterval, OptimizationListener listener) {
 		@SuppressWarnings("unchecked")
 		ArrayList<double[]> inputs = (ArrayList<double[]>) in.clone();
@@ -633,20 +684,81 @@ public class NeuralNet {
 		long startTime = System.currentTimeMillis();
 		double totalErrors = 0;
 
-		if (this.config.backPropagationAlgorithm == Config.STANDARD_BACKPROPAGATION) {
-			return performStandardBackPropagation(target, maxEpochs, callBackInterval, listener, inputs,
-					expected, results, startTime, totalErrors);
-		} else if (this.config.backPropagationAlgorithm == Config.RPROP_BACKPROPAGATION) {
-			return performRPropagation(target, maxEpochs, callBackInterval, listener, inputs, expected,
+		if (this.config.backPropagationAlgorithm == Config.RPROP_BACKPROPAGATION) {
+			return performRPropagation(target, maxEpochs, callBackInterval, listener, inputs, expected, results,
+					startTime, totalErrors);
+		} else {
+			return performStandardBackPropagation(target, maxEpochs, callBackInterval, listener, inputs, expected,
 					results, startTime, totalErrors);
 		}
-		return null;
+	}
+
+	public Pair<Integer, Double> optimizeRecurrent(ArrayList<ArrayList<double[]>> in, ArrayList<double[]> exp, double target, int maxEpochs,
+			int callBackInterval, OptimizationListener listener) {
+		@SuppressWarnings("unchecked")
+		ArrayList<double[]> inputs = (ArrayList<double[]>) in.clone();
+		@SuppressWarnings("unchecked")
+		ArrayList<double[]> expected = (ArrayList<double[]>) exp.clone();
+		ArrayList<double[]> results = new ArrayList<double[]>();
+
+		long startTime = System.currentTimeMillis();
+		double totalErrors = 0;
+
+		return performStandardRecurrentBackPropagation(target, maxEpochs, callBackInterval, listener, in, expected,
+				results, startTime, totalErrors);
+
+	}
+	
+	private Pair<Integer, Double> performStandardRecurrentBackPropagation(double target, int maxEpochs, int callBackInterval,
+			OptimizationListener listener, ArrayList<ArrayList<double[]>> inputs, ArrayList<double[]> expected,
+			ArrayList<double[]> results, long startTime, double totalErrors) {
+
+		Random rnd = new Random();
+		rnd.setSeed(1234567);
+		int i;
+		for (i = 0; i < maxEpochs; i++) {
+			// System.out.println("adjusting weights.");
+			results.clear();
+			shuffleArray(rnd, inputs, expected);
+
+			int index = 0;
+
+			for (ArrayList<double[]> inputSet : inputs) {
+				int i2 = 0;
+				double[] output = feed(inputSet.get(0), true);
+				
+				for(i2 = 1; i2 < inputSet.size(); i2++) {
+					output = feed(inputSet.get(i2), false);
+				}
+
+				results.add(output);
+				adjustWeights(index, expected.get(index));
+				index++;
+			}
+
+			totalErrors = getTotalError(expected, results);
+
+			if (totalErrors < target && (i > 10)) {
+				return new Pair<Integer, Double>(i + 1, totalErrors);
+			}
+
+			if (i % callBackInterval == 0) {
+				long endTime = System.currentTimeMillis();
+				long elapsed = endTime - startTime;
+				startTime = System.currentTimeMillis();
+
+				if (listener != null) {
+					listener.checkpoint(i, totalErrors, elapsed);
+				}
+
+			}
+		}
+		return new Pair<Integer, Double>(i + 1, totalErrors);
 	}
 
 	private Pair<Integer, Double> performStandardBackPropagation(double target, int maxEpochs, int callBackInterval,
-			OptimizationListener listener, ArrayList<double[]> inputs,
-			ArrayList<double[]> expected, ArrayList<double[]> results,
-			long startTime, double totalErrors) {
+			OptimizationListener listener, ArrayList<double[]> inputs, ArrayList<double[]> expected,
+			ArrayList<double[]> results, long startTime, double totalErrors) {
 
 		Random rnd = new Random();
 		rnd.setSeed(1234567);
@@ -661,7 +773,7 @@ public class NeuralNet {
 			for (double[] input : inputs) {
 				double[] output = feed(input);
 				results.add(output);
-				adjustWeights(expected.get(index++));
+				adjustWeights(0, expected.get(index++));
 			}
 
 			totalErrors = getTotalError(expected, results);
@@ -685,9 +797,8 @@ public class NeuralNet {
 	}
 
 	private Pair<Integer, Double> performRPropagation(double target, int maxEpochs, int callBackInterval,
-			OptimizationListener listener, ArrayList<double[]> inputs,
-			ArrayList<double[]> expected, ArrayList<double[]> results,
-			long startTime, double totalErrors) {
+			OptimizationListener listener, ArrayList<double[]> inputs, ArrayList<double[]> expected,
+			ArrayList<double[]> results, long startTime, double totalErrors) {
 		Random rnd = new Random();
 		rnd.setSeed(1234567);
 		int i;
@@ -696,17 +807,17 @@ public class NeuralNet {
 			// System.out.println("adjusting weights.");
 			results.clear();
 			resetDeltas();
-			
+
 			shuffleArray(rnd, inputs, expected);
 
 			int index = 0;
-			
+
 			for (double[] input : inputs) {
 				double[] output = feed(input);
 				results.add(output);
 				computeGradients(expected.get(index++));
 			}
-			
+
 			updateWeightsRprop();
 
 			totalErrors = getTotalError(expected, results);
@@ -738,7 +849,7 @@ public class NeuralNet {
 
 		return totalErrors / results.size();
 	}
-	
+
 	private void resetDeltas() {
 		for (ArrayList<Neuron> layer : this.layers) {
 			for (Neuron n : layer) {
@@ -746,7 +857,7 @@ public class NeuralNet {
 			}
 		}
 	}
-	
+
 	private void resetAllDeltas() {
 		for (ArrayList<Neuron> layer : this.layers) {
 			for (Neuron n : layer) {

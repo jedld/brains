@@ -2,6 +2,7 @@ package com.dayosoft.nn;
 
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
 
 public class Neuron {
 
@@ -27,13 +28,45 @@ public class Neuron {
 	private double previousDeltaBias = 0.0f;
 	private double biasUpdateValue = 0.0f;
 	private double biasChange = 0.0f;
+	
 	private double inputs[];
+	
+	//used for recurrent neural networks
+	private double previousOutput = 0.0f; 
+	public double getPreviousOutput() {
+		return previousOutput;
+	}
+
+	public void setPreviousOutput(double previousOutput) {
+		this.previousOutput = previousOutput;
+	}
+
+	public double getPreviousOutputWeight() {
+		return previousOutputWeight;
+	}
+
+	public void setPreviousOutputWeight(double previousOutputWeight) {
+		this.previousOutputWeight = previousOutputWeight;
+	}
+
+	private double previousOutputWeight = 0.0f;
+	private ArrayList<double[]> recordedInputs = new ArrayList<double[]>();
 
 	protected boolean fired = false;
 	protected double output = 0.0f;
 
 	private int id;
 	private int layer;
+	
+	private boolean isRecurrent = false;
+
+	public boolean isRecurrent() {
+		return isRecurrent;
+	}
+
+	public void setRecurrent(boolean isRecurrent) {
+		this.isRecurrent = isRecurrent;
+	}
 
 	public int getId() {
 		return id;
@@ -43,7 +76,7 @@ public class Neuron {
 		this.id = id;
 	}
 
-	public Neuron(int id, int layer, int connections, double triggerValue, int activationFunctionType) {
+	public Neuron(int id, int layer, int connections, double triggerValue, boolean isRecurrent, int activationFunctionType) {
 		this.id = id;
 		this.activationFunctionType = activationFunctionType;
 		this.layer = layer;
@@ -60,6 +93,10 @@ public class Neuron {
 		this.previousDeltaBias = 0.0f;
 		this.biasChange = 0.0f;
 		this.biasUpdateValue = 0.1f;
+		this.previousOutput = 0.0f;
+		this.previousOutputWeight = 0.0f;
+		this.isRecurrent  = isRecurrent;
+		
 		for (int i = 0; i < connections; i++) {
 			weight[i] = 0.00f;
 			previousWeight[i] = 0.00f;
@@ -184,6 +221,12 @@ public class Neuron {
 
 	public double fire() {
 		if (!fired) {
+			
+			if (this.isRecurrent) {
+				this.previousOutput = output;
+				this.recordedInputs.add(inputs.clone());
+			}
+			
 			if (activationFunctionType == SIGMOID) {
 				output = (1f / (1f + Math.exp(-(getTotal()))));
 			} else if (activationFunctionType == HTAN) {
@@ -205,7 +248,11 @@ public class Neuron {
 		for (int index = 0; index < inputs.length; index++) {
 			total += inputs[index] * weight[index];
 		}
-		return total + biasWeight * bias;
+		if (this.isRecurrent) {
+			return total + previousOutput * previousOutputWeight + biasWeight * bias;
+		} else {
+			return total + biasWeight * bias;
+		}
 	}
 
 	double[] getWeights() {
@@ -293,5 +340,14 @@ public class Neuron {
 			this.previousDeltaWeight[i] = gradient;
 			System.out.println(this.weight[i] + " " + weightChange);
 		}
+	}
+
+	public void resetRecurrenceStates() {
+		this.previousOutput = 0.0f;
+		this.recordedInputs.clear();
+	}
+
+	public void setRecordedInput(int index) {
+		this.inputs = this.recordedInputs.get(index);
 	}
 }
