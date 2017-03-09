@@ -32,7 +32,8 @@ public class Neuron {
 	private double inputs[];
 	
 	//used for recurrent neural networks
-	private double previousOutput = 0.0f; 
+	private double previousOutput = 0.0f;
+	
 	public double getPreviousOutput() {
 		return previousOutput;
 	}
@@ -59,6 +60,8 @@ public class Neuron {
 	private int layer;
 	
 	private boolean isRecurrent = false;
+	private double previousPreviousOutputWeight;
+	private double deltaPreviousOutputWeight;
 
 	public boolean isRecurrent() {
 		return isRecurrent;
@@ -160,7 +163,7 @@ public class Neuron {
 			double pw = weight[index];
 			double delta = e * inputs[index] + momentum * (weight[index] - previousWeight[index]);
 			if (deltaOnly) {
-				deltaWeight[index] += fire() * delta;
+				deltaWeight[index] += delta;
 			} else {
 				previousWeight[index] = pw;
 				weight[index] += delta;
@@ -172,10 +175,21 @@ public class Neuron {
 		double pBW = this.biasWeight;
 		double deltaBias = e * this.bias + momentum * (biasWeight - previousBiasWeight);
 		if (deltaOnly) {
-			this.deltaBias += fire() * deltaBias;
+			this.deltaBias += deltaBias;
 		} else {
 			this.biasWeight += deltaBias;
 			this.previousBiasWeight = pBW;
+		}
+		
+		// update previous output weight
+		sum += errorTerm * this.previousOutputWeight * this.previousOutput;
+		double pOW = this.previousOutputWeight;
+		double deltaPreviousOutput = e * this.previousOutput + momentum * (previousOutputWeight - previousPreviousOutputWeight);
+		if (deltaOnly) {
+			this.deltaPreviousOutputWeight += deltaPreviousOutput;
+		} else {
+			this.previousOutputWeight += deltaPreviousOutput;
+			this.previousPreviousOutputWeight = pOW;
 		}
 		return sum;
 	}
@@ -189,6 +203,10 @@ public class Neuron {
 		this.previousBiasWeight = this.biasWeight;
 		this.biasWeight += this.deltaBias;
 		this.deltaBias = 0.0f;
+		
+		this.previousPreviousOutputWeight = this.previousOutputWeight;
+		this.previousOutputWeight += this.deltaPreviousOutputWeight;
+		this.deltaPreviousOutputWeight = 0.0f;
 	}
 
 	public double incrementDelta(double value) {
@@ -221,12 +239,6 @@ public class Neuron {
 
 	public double fire() {
 		if (!fired) {
-			
-			if (this.isRecurrent) {
-				this.previousOutput = output;
-				this.recordedInputs.add(inputs.clone());
-			}
-			
 			if (activationFunctionType == SIGMOID) {
 				output = (1f / (1f + Math.exp(-(getTotal()))));
 			} else if (activationFunctionType == HTAN) {
@@ -248,11 +260,8 @@ public class Neuron {
 		for (int index = 0; index < inputs.length; index++) {
 			total += inputs[index] * weight[index];
 		}
-		if (this.isRecurrent) {
-			return total + previousOutput * previousOutputWeight + biasWeight * bias;
-		} else {
-			return total + biasWeight * bias;
-		}
+		
+		return total + previousOutput * previousOutputWeight + biasWeight * bias;
 	}
 
 	double[] getWeights() {
@@ -344,10 +353,27 @@ public class Neuron {
 
 	public void resetRecurrenceStates() {
 		this.previousOutput = 0.0f;
-		this.recordedInputs.clear();
 	}
 
 	public void setRecordedInput(int index) {
 		this.inputs = this.recordedInputs.get(index);
+	}
+
+	public void updatePreviousOutput() {
+		if (fired) {
+			this.previousOutput = this.output;
+		} else {
+			//neuron not fired! This is not expected
+			throw new RuntimeException();
+		}
+	}
+
+	public double getDeltaPreviousOutput() {
+		// TODO Auto-generated method stub
+		return this.deltaPreviousOutputWeight;
+	}
+
+	public double[] getInputs() {
+		return this.inputs;
 	}
 }

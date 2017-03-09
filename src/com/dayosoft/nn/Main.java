@@ -11,15 +11,17 @@ import com.dayosoft.nn.utils.OutputUtils;
 
 public class Main {
 	public static void main(String args[]) {
-		testBinary();
+		testSin();
+		testSinRecurrent();
 	}
 
-	private static void testBinary() {
-		NeuralNet.Config config = new NeuralNet.Config(1, 1, 2);
+	private static void testSinRecurrent() {
+		System.out.println("starting binary test ....");
+		System.out.println("=========================");
+		NeuralNet.Config config = new NeuralNet.Config(1, 1, 7);
 		config.bias = 1f;
 		config.outputBias = 1f;
-		config.learningRate = 1f;
-		config.neuronsPerLayer = 1;
+		config.learningRate = 0.01f;
 		config.momentumFactor = 0f;
 		config.activationFunctionType = Neuron.HTAN;
 		config.outputActivationFunctionType = Neuron.SIGMOID;
@@ -30,30 +32,46 @@ public class Main {
 		NeuralNet nn = new NeuralNet(config);
 		nn.randomizeWeights(-1, 1);
 		
-		ArrayList<ArrayList<double[]>> inputs = new ArrayList<ArrayList<double[]>>();
-		ArrayList<double[]> expected = new ArrayList<double[]>();
-		
 		ArrayList<ArrayList<double[]>> lines = new ArrayList<ArrayList<double[]>>();
+		ArrayList<ArrayList<double[]>> outputLines = new ArrayList<ArrayList<double[]>>();
+
 		
-		ArrayList<double[]> item = new ArrayList<double[]>();
-		item.add(new double[] {0.1f});
-		item.add(new double[] {0.9f});
-		item.add(new double[] {0.1f});
-		lines.add(item);
-		expected.add(new double[] {0.2f} );
+		createExample(0, 3, lines, outputLines);
+		createExample(4, 9, lines, outputLines);
+		createExample(3, 11, lines, outputLines);
+		createExample(100, 106, lines, outputLines);
+		createExample(20, 27, lines, outputLines);
+		createExample(17, 20, lines, outputLines);
 		
+		ArrayList<double[]> test2 = new ArrayList<double[]>();
+		ArrayList<double[]> testResult2 = new ArrayList<double[]>();
+		for(int t = 10; t < 14; t++) {
+			test2.add(new double[] {Math.sin(t)});
+		}
+	
+		for(int t = 10; t < 14; t++) {
+			testResult2.add(new double[] {Math.sin(t + 1)});
+		}
 		
-		ArrayList<double[]> item2 = new ArrayList<double[]>();
-		item2.add(new double[] {0.1f});
-		item2.add(new double[] {0.9f});
-		item2.add(new double[] {0.9f});
-		lines.add(item2);
-		expected.add(new double[] {0.3f});
+		ArrayList<double[]> item3 = new ArrayList<double[]>();
+		ArrayList<double[]> itemResult3 = new ArrayList<double[]>();
+		for(int t = 0; t < 13; t++) {
+			item3.add(new double[] {Math.sin(t)});
+		}
 		
-		OutputUtils.print(nn.feed(item));
-		OutputUtils.print(nn.feed(item2));
+		for(int t = 0; t < 13; t++) {
+			itemResult3.add(new double[] {Math.sin(t + 1)});
+		}
 		
-		nn.optimizeRecurrent(lines, expected, 0.001, 10000, 100, new OptimizationListener() {
+		OutputUtils.print(nn.feed(test2));
+		OutputUtils.print(testResult2);
+			
+		OutputUtils.print(nn.feed(item3));
+		OutputUtils.print(itemResult3);
+		
+		System.out.println(nn.saveStateToJson());
+		System.out.println("=======training start===========");
+		nn.optimizeRecurrent(lines, outputLines, 0.01, 1000000, 100000, new OptimizationListener() {
 
 			@Override
 			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {
@@ -63,16 +81,40 @@ public class Main {
 			
 		});
 		
-		OutputUtils.print(nn.feed(item));
-		OutputUtils.print(nn.feed(item2));
+		OutputUtils.print(nn.feed(test2));
+		OutputUtils.print(testResult2);
+			
+		OutputUtils.print(nn.feed(item3));
+		OutputUtils.print(itemResult3);
+	
+		
+		System.out.println();
+		System.out.println(nn.saveStateToJson());
+	}
+
+	private static ArrayList<double[]> createExample(int start, int end, ArrayList<ArrayList<double[]>> lines,
+			ArrayList<ArrayList<double[]>> outputLines) {
+		ArrayList<double[]> item = new ArrayList<double[]>();
+		ArrayList<double[]> itemResult = new ArrayList<double[]>();
+		for(int t = start; t < end; t++) {
+			item.add(new double[] {Math.sin(t)});
+		}
+		lines.add(item);
+		
+		for(int t = start; t < end; t++) {
+			itemResult.add(new double[] {Math.sin(t + 1)});
+		}
+		outputLines.add(itemResult);
+		return item;
 	}
 
 	private static void testSin() {
-		NeuralNet.Config config = new NeuralNet.Config(1, 1, 2);
+		System.out.println("starting sin test ....");
+		System.out.println("=========================");
+		NeuralNet.Config config = new NeuralNet.Config(1, 1, 4);
 		config.bias = 1f;
 		config.outputBias = 1f;
 		config.learningRate = 1f;
-		config.neuronsPerLayer = 1;
 		config.momentumFactor = 0f;
 		config.activationFunctionType = Neuron.SIGMOID;
 		config.outputActivationFunctionType = Neuron.SIGMOID;
