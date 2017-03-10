@@ -55,6 +55,20 @@ public class OutputUtils {
 		}
 		System.out.println();
 	}
+	
+	public static void printOverT(List<double[]> arrs) {
+		int index = 0;
+		for (double[] a : arrs) {
+			StringBuilder str = new StringBuilder();
+			for (double o : a) {
+				str.append(round(o));
+				str.append(" ");
+			}
+			System.out.print("" + index + "," +str.toString() + "\n");
+			index++;
+		}
+		System.out.println();
+	}
 
 	public static String printBoolArr(double arr[]) {
 		StringBuilder str = new StringBuilder();

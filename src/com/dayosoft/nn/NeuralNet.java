@@ -8,9 +8,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
+import com.dayosoft.nn.utils.ListUtils;
 import com.dayosoft.nn.utils.OutputUtils;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -148,7 +150,7 @@ public class NeuralNet {
 	public String saveStateToJson() {
 		return saveStateToJson(false);
 	}
-	
+
 	public String saveStateToJson(boolean withInputs) {
 		JsonObject jsonObject = new JsonObject();
 		jsonObject.addProperty("n", neurons);
@@ -654,6 +656,12 @@ public class NeuralNet {
 		}
 	}
 
+	public void resetErrorStates() {
+		for (Neuron n : this.allNeurons) {
+			n.previousErrorSumForNode = 0.0f;
+		}
+	}
+
 	public ArrayList<double[]> feed(ArrayList<double[]> lines) {
 		ArrayList<double[]> results = new ArrayList<double[]>();
 		resetRecurrentStates();
@@ -777,7 +785,7 @@ public class NeuralNet {
 
 	@SuppressWarnings("unchecked")
 	public Pair<Integer, Double> optimizeRecurrent(ArrayList<ArrayList<double[]>> in,
-			ArrayList<ArrayList<double[]>> exp, double target, int maxEpochs, int callBackInterval,
+			ArrayList<ArrayList<double[]>> exp, double target, int maxLayerCount, int maxEpochs, int callBackInterval,
 			OptimizationListener listener) {
 		ArrayList<ArrayList<double[]>> expected = (ArrayList<ArrayList<double[]>>) exp.clone();
 		ArrayList<double[]> results = new ArrayList<double[]>();
@@ -785,8 +793,8 @@ public class NeuralNet {
 		long startTime = System.currentTimeMillis();
 		double totalErrors = 0;
 
-		return performStandardRecurrentBackPropagation(target, maxEpochs, callBackInterval, listener, (ArrayList<ArrayList<double[]>>)in.clone(), expected,
-				results, startTime, totalErrors);
+		return performStandardRecurrentBackPropagation(target, maxEpochs, callBackInterval, maxLayerCount, listener,
+				(ArrayList<ArrayList<double[]>>) in.clone(), expected, results, startTime, totalErrors);
 
 	}
 
@@ -801,8 +809,9 @@ public class NeuralNet {
 	}
 
 	private Pair<Integer, Double> performStandardRecurrentBackPropagation(double target, int maxEpochs,
-			int callBackInterval, OptimizationListener listener, ArrayList<ArrayList<double[]>> inputs,
-			ArrayList<ArrayList<double[]>> expected, ArrayList<double[]> results, long startTime, double totalErrors) {
+			int callBackInterval, int maxLayerCount, OptimizationListener listener,
+			ArrayList<ArrayList<double[]>> inputs, ArrayList<ArrayList<double[]>> expected, ArrayList<double[]> results,
+			long startTime, double totalErrors) {
 
 		Random rnd = new Random();
 		rnd.setSeed(1234567);
@@ -822,40 +831,28 @@ public class NeuralNet {
 			shuffleArray(rnd, inputs, expected);
 			results.clear();
 
-			int index = 0;
 			// System.out.println("Epoch " + i);
-			for (ArrayList<double[]> inputSet : inputs) {
-				inputSetArray.clear();
-				ArrayList<double[]> outputSet = expected.get(index);
-				int i2 = 0;
+			int index = 0;
 
+			for (ArrayList<double[]> currentInput : inputs) {
+				ArrayList<double[]> currentOutput = expected.get(index);
+				
+				if (maxLayerCount == 0) {
+					maxLayerCount = currentInput.size();
+				}
+				
+				List<List<double[]>> choppedList = ListUtils.chopped(currentInput, maxLayerCount);
+				List<List<double[]>> choppedOutputList = ListUtils.chopped(currentOutput, maxLayerCount);
+				int index2 = 0;
+				
 				resetRecurrentStates();
-
-				double[] output = feed(inputSet.get(i2));
-				inputSetArray.add(saveInputs());
-				updatePreviousOutputs();
-				results.add(output);
-
-				for (i2 = 1; i2 < inputSet.size(); i2++) {
-					output = feed(inputSet.get(i2));
-					inputSetArray.add(saveInputs());
-					updatePreviousOutputs();
-					results.add(output);
+				
+				for (List<double[]> current : choppedList) {
+					List<double[]> output = choppedOutputList.get(index2);
+					runBPTT(output, results, inputSetArray, current);
+					index2++;
 				}
 
-				i2 = inputSet.size() - 1;
-				inputSetArray.get(i2).restoreState(this.allNeurons);
-				this.adjustWeights(outputSet.get(i2), true);
-
-				for (i2 = inputSet.size() - 2; i2 >= 0; i2--) {
-					inputSetArray.get(i2).restoreState(this.allNeurons);
-					this.adjustWeights(outputSet.get(i2), true);
-				}
-
-				// apply all deltas
-				// OutputUtils.print(dumpDeltas());
-				updateDeltas();
-				// System.out.println("update=>\n" + saveStateToJson());
 				index++;
 			}
 
@@ -877,6 +874,37 @@ public class NeuralNet {
 			}
 		}
 		return new Pair<Integer, Double>(i + 1, totalErrors);
+	}
+
+	private void runBPTT(List<double[]> outputSet, ArrayList<double[]> results, ArrayList<InputSet> inputSetArray,
+			List<double[]> inputSet) {
+		inputSetArray.clear();
+		int i2 = 0;
+
+		resetErrorStates();
+		double[] output = feed(inputSet.get(i2));
+		inputSetArray.add(saveInputs());
+		updatePreviousOutputs();
+		results.add(output);
+
+		for (i2 = 1; i2 < inputSet.size(); i2++) {
+			output = feed(inputSet.get(i2));
+			inputSetArray.add(saveInputs());
+			updatePreviousOutputs();
+			results.add(output);
+		}
+
+		i2 = inputSet.size() - 1;
+		inputSetArray.get(i2).restoreState(this.allNeurons);
+		this.adjustWeights(outputSet.get(i2), true);
+
+		for (i2 = inputSet.size() - 2; i2 >= 0; i2--) {
+			inputSetArray.get(i2).restoreState(this.allNeurons);
+			this.adjustWeights(outputSet.get(i2), true);
+		}
+
+		// apply all deltas
+		updateDeltas();
 	}
 
 	private Pair<Integer, Double> performStandardBackPropagation(double target, int maxEpochs, int callBackInterval,

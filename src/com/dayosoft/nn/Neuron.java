@@ -355,7 +355,6 @@ public class Neuron {
 
 	public void resetRecurrenceStates() {
 		this.previousOutput = 0.0f;
-		this.previousErrorSumForNode = 0.0f;
 		
 		for(int i = 0; i < inputs.length; i++) {
 			inputs[i] = 0.0f;

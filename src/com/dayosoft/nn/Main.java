@@ -50,11 +50,11 @@ public class Main {
 		
 		ArrayList<double[]> item3 = new ArrayList<double[]>();
 		ArrayList<double[]> itemResult3 = new ArrayList<double[]>();
-		for(int t = 90; t < 100; t++) {
+		for(int t = 90; t < 110; t++) {
 			item3.add(new double[] {Math.sin(t)});
 		}
 		
-		for(int t = 90; t < 100; t++) {
+		for(int t = 90; t < 110; t++) {
 			itemResult3.add(new double[] {Math.sin(t + 1)});
 		}
 		
@@ -64,9 +64,8 @@ public class Main {
 		OutputUtils.print(nn.feed(item3));
 		OutputUtils.print(itemResult3);
 		
-		System.out.println(nn.saveStateToJson());
 		System.out.println("=======training start===========");
-		nn.optimizeRecurrent(lines, outputLines, 0.01, 1000000, 1000, new OptimizationListener() {
+		nn.optimizeRecurrent(lines, outputLines, 0.01, 0, 1000000, 1000, new OptimizationListener() {
 
 			@Override
 			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {
