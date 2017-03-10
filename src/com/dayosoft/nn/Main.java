@@ -55,11 +55,11 @@ public class Main {
 		
 		ArrayList<double[]> item3 = new ArrayList<double[]>();
 		ArrayList<double[]> itemResult3 = new ArrayList<double[]>();
-		for(int t = 0; t < 13; t++) {
+		for(int t = 90; t < 100; t++) {
 			item3.add(new double[] {Math.sin(t)});
 		}
 		
-		for(int t = 0; t < 13; t++) {
+		for(int t = 90; t < 100; t++) {
 			itemResult3.add(new double[] {Math.sin(t + 1)});
 		}
 		
@@ -71,7 +71,7 @@ public class Main {
 		
 		System.out.println(nn.saveStateToJson());
 		System.out.println("=======training start===========");
-		nn.optimizeRecurrent(lines, outputLines, 0.01, 1000000, 100000, new OptimizationListener() {
+		nn.optimizeRecurrent(lines, outputLines, 0.01, 100000, 1000, new OptimizationListener() {
 
 			@Override
 			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {
@@ -149,10 +149,13 @@ public class Main {
 		inputs.add(new double[] { 0.8f});
 		expected.add(new double[] { Math.sin(0.8f) } );
 		
+		inputs.add(new double[] { 0.7f});
+		expected.add(new double[] { Math.sin(0.7f) } );
+		
 		inputs.add(new double[] { 0f});
 		expected.add(new double[] { Math.sin(0f) } );
 		
-		Pair<Integer, Double> stats = nn.optimize(inputs, expected, 0.001f, 100000, 1, new OptimizationListener() {
+		Pair<Integer, Double> stats = nn.optimize(inputs, expected, 0.0001f, 1000000, 10, new OptimizationListener() {
 
 			@Override
 			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {
@@ -166,6 +169,7 @@ public class Main {
 		showResult(nn, 0.5f);
 		showResult(nn, 0.6f);
 		showResult(nn, 0.8f);
+		showResult(nn, 0.78f);
 	}
 	
 	

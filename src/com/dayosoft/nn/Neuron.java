@@ -353,6 +353,9 @@ public class Neuron {
 
 	public void resetRecurrenceStates() {
 		this.previousOutput = 0.0f;
+		for(int i = 0; i < inputs.length; i++) {
+			inputs[i] = 0.0f;
+		}
 	}
 
 	public void setRecordedInput(int index) {
@@ -375,5 +378,14 @@ public class Neuron {
 
 	public double[] getInputs() {
 		return this.inputs;
+	}
+
+	public void setInput(double[] newInput) {
+		this.inputs = newInput;
+	}
+
+	public void setOutput(double currentOutput) {
+		this.output = currentOutput;
+		this.fired = true;
 	}
 }

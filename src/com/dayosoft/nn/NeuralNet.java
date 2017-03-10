@@ -521,9 +521,9 @@ public class NeuralNet {
 			double errorTerm;
 			
 			if (this.gradientFormula == Config.DERIVATIVE) {
-				errorTerm = n.derivative() * (expectedOutput[i2++] - (n.fired ? n.output : n.fire()));
+				errorTerm = n.derivative() * (expectedOutput[i2++] - n.fire());
 			} else {
-				errorTerm = expectedOutput[i2++] - (n.fired ? n.output : n.fire());
+				errorTerm = expectedOutput[i2++] - n.fire();
 			}
 			double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, recordDelta);
 			deltaSum += y;
@@ -610,17 +610,20 @@ public class NeuralNet {
 
 	}
 
-	public double[] feed(double inputs[]) {
-		return feed(inputs, true);
+	public void resetRecurrentStates() {
+		for(Neuron n : this.allNeurons) {
+			n.resetRecurrenceStates();
+		}
 	}
 	
 	public ArrayList<double[]> feed(ArrayList<double[]> lines) {
 		ArrayList<double[]> results = new ArrayList<double[]>();
-		double[] result = feed(lines.get(0), true);
+		resetRecurrentStates();
+		double[] result = feed(lines.get(0));
 		results.add(result);
 		updatePreviousOutputs();
 		for(int i = 1; i < lines.size(); i++) {
-			result = feed(lines.get(i), false);
+			result = feed(lines.get(i));
 			updatePreviousOutputs();
 			results.add(result);
 		}
@@ -634,13 +637,10 @@ public class NeuralNet {
 	 * @param reset
 	 * @return
 	 */
-	public double[] feed(double inputs[], boolean reset) {
+	public double[] feed(double inputs[]) {
 		double output[] = new double[outputCount];
 		for (Neuron n : allNeurons) {
 			n.fired = false;
-			if (reset) {
-				n.resetRecurrenceStates();
-			}
 		}
 
 		double layerOutputs[] = new double[maxNeuronWidth];
@@ -752,6 +752,16 @@ public class NeuralNet {
 
 	}
 	
+	private InputSet saveInputs() {
+		InputSet inputSet = new InputSet();
+		inputSet.addState(this.allNeurons);
+		return inputSet;
+	}
+	
+	private void restoreInputs(InputSet inputSet) {
+		inputSet.restoreState( this.allNeurons);
+	}
+	
 	private Pair<Integer, Double> performStandardRecurrentBackPropagation(double target, int maxEpochs, int callBackInterval,
 			OptimizationListener listener, ArrayList<ArrayList<double[]>> inputs, ArrayList<ArrayList<double[]>> expected,
 			ArrayList<double[]> results, long startTime, double totalErrors) {
@@ -760,12 +770,16 @@ public class NeuralNet {
 		rnd.setSeed(1234567);
 		int i;
 		ArrayList<double[]> expectedResults = new ArrayList<double[]>();
-		
+		ArrayList<InputSet> inputSetArray = new ArrayList<InputSet>();
 		
 		for (ArrayList<double[]> ex : expected) {
 			for(double[] ex2 : ex) {
 				expectedResults.add(ex2);
 			}
+		}
+		double[] zeroMagnitudeVector = new double[config.inputCount];
+		for(int m = 0; m < config.inputCount; m++) {
+			zeroMagnitudeVector[m] = 0.0f;
 		}
 		
 		for (i = 0; i < maxEpochs; i++) {
@@ -777,21 +791,32 @@ public class NeuralNet {
 			int index = 0;
 //			System.out.println("Epoch " + i);
 			for (ArrayList<double[]> inputSet : inputs) {
+				inputSetArray.clear();
 				ArrayList<double[]> outputSet = expected.get(index);
-				int i2 = inputSet.size() - 1;
+				int i2 = 0;
+
+				resetRecurrentStates();
+				feed(inputSet.get(i2));
 				
-				double[] output = feed(inputSet.get(i2), true);
-				adjustWeights(outputSet.get(i2), true);
-//				System.out.println(saveStateToJson());
+				double[] output = feed(inputSet.get(i2));
+				inputSetArray.add(saveInputs());
 				updatePreviousOutputs();
 				results.add(output);
 				
-				for(i2 = inputSet.size() - 2; i2 >=0 ; i2--) {
-					output = feed(inputSet.get(i2), false);
-					adjustWeights(outputSet.get(i2), true);
-//					System.out.println(saveStateToJson());
+				for(i2 = 1 ; i2 < inputSet.size(); i2++) {
+					output = feed(inputSet.get(i2));
+					inputSetArray.add(saveInputs());
 					updatePreviousOutputs();
 					results.add(output);
+				}
+				
+				i2 = inputSet.size() - 1;
+				inputSetArray.get(i2).restoreState(this.allNeurons);
+				this.adjustWeights(outputSet.get(i2), true);
+				
+				for(i2 = inputSet.size() - 2; i2 >=0; i2--) {
+					inputSetArray.get(i2).restoreState(this.allNeurons);
+					this.adjustWeights(outputSet.get(i2), true);
 				}
 				
 				// apply all deltas
