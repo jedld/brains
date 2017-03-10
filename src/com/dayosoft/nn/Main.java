@@ -25,7 +25,7 @@ public class Main {
 		config.neuronsPerLayer = 4;
 		config.momentumFactor = 0f;
 		config.activationFunctionType = Neuron.HTAN;
-		config.outputActivationFunctionType = Neuron.SIGMOID;
+		config.outputActivationFunctionType = Neuron.HTAN;
 		config.isRecurrent = true;
 		config.errorFormula = Config.MEAN_SQUARED;
 		config.backPropagationAlgorithm = Config.STANDARD_BACKPROPAGATION;
@@ -40,11 +40,11 @@ public class Main {
 		
 		ArrayList<double[]> test2 = new ArrayList<double[]>();
 		ArrayList<double[]> testResult2 = new ArrayList<double[]>();
-		for(int t = 0; t < 3; t++) {
+		for(int t = 0; t < 10; t++) {
 			test2.add(new double[] {Math.sin(t)});
 		}
 	
-		for(int t = 0; t < 3; t++) {
+		for(int t = 0; t < 10; t++) {
 			testResult2.add(new double[] {Math.sin(t + 1)});
 		}
 		
@@ -65,7 +65,7 @@ public class Main {
 		OutputUtils.print(itemResult3);
 		
 		System.out.println("=======training start===========");
-		nn.optimizeRecurrent(lines, outputLines, 0.01, 0, 1000000, 1000, new OptimizationListener() {
+		nn.optimizeRecurrent(lines, outputLines, 0.001, 0, 1000000, 1000, new OptimizationListener() {
 
 			@Override
 			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {
