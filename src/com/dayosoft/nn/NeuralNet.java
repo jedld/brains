@@ -94,14 +94,20 @@ public class NeuralNet {
 
 		ArrayList<ArrayList<double[]>> weights = new ArrayList<ArrayList<double[]>>();
 		ArrayList<ArrayList<Double>> biasWeights = new ArrayList<ArrayList<Double>>();
+		ArrayList<ArrayList<Double>> hiddenStateWeights = new ArrayList<ArrayList<Double>>();
+
 		for (int i = 0; i < layers.size(); i++) {
 			JsonArray layer = layers.get(i).getAsJsonArray();
 			ArrayList<double[]> n = new ArrayList<double[]>();
 			ArrayList<Double> layerBiases = new ArrayList<Double>();
+			ArrayList<Double> layerHiddenStateWeights = new ArrayList<Double>();
 			for (int i2 = 0; i2 < layer.size(); i2++) {
 				JsonObject neuronObj = layer.get(i2).getAsJsonObject();
 				JsonArray weightArr = neuronObj.getAsJsonArray("weights");
 				layerBiases.add(neuronObj.get("biasWeight").getAsDouble());
+				if (config.isRecurrent) {
+					layerHiddenStateWeights.add(neuronObj.get("previousOutputWeight").getAsDouble());
+				}
 				double w[] = new double[weightArr.size()];
 				for (int i3 = 0; i3 < weightArr.size(); i3++) {
 					w[i3] = weightArr.get(i3).getAsDouble();
@@ -109,6 +115,9 @@ public class NeuralNet {
 				n.add(w);
 			}
 			biasWeights.add(layerBiases);
+			if (config.isRecurrent) {
+				hiddenStateWeights.add(layerHiddenStateWeights);
+			}
 			weights.add(n);
 		}
 
@@ -118,10 +127,29 @@ public class NeuralNet {
 
 		nn.loadWeights(weights);
 		nn.loadBiases(biasWeights);
+		if (config.isRecurrent) {
+			nn.loadHiddenStateWeights(hiddenStateWeights);
+		}
 		return nn;
 	}
 
+	private void loadHiddenStateWeights(ArrayList<ArrayList<Double>> hiddenStateWeights) {
+		int i = 0;
+		for (ArrayList<Double> n : hiddenStateWeights) {
+			ArrayList<Neuron> layer = layers.get(i++);
+			int i2 = 0;
+			for (double w : n) {
+				Neuron neuron = layer.get(i2++);
+				neuron.setPreviousOutputWeight(w);
+			}
+		}
+	}
+
 	public String saveStateToJson() {
+		return saveStateToJson(false);
+	}
+	
+	public String saveStateToJson(boolean withInputs) {
 		JsonObject jsonObject = new JsonObject();
 		jsonObject.addProperty("n", neurons);
 		jsonObject.addProperty("surface", surface);
@@ -151,14 +179,17 @@ public class NeuralNet {
 				for (double d : n.getInputs()) {
 					inputs.add(d);
 				}
-				
+
 				nObj.addProperty("bias", n.bias);
 				nObj.addProperty("biasWeight", n.biasWeight);
 				nObj.add("weights", w);
 				nObj.addProperty("previousOutputWeight", n.getPreviousOutputWeight());
-				nObj.add("inputs", inputs);
-				nObj.addProperty("output", n.output);
-				nObj.addProperty("previous_output", n.getPreviousOutput());
+				if (withInputs) {
+					nObj.add("inputs", inputs);
+					nObj.addProperty("previous_output", n.getPreviousOutput());
+					nObj.addProperty("output", n.output);
+				}
+
 				neuronLayer.add(nObj);
 			}
 			layerArray.add(neuronLayer);
@@ -268,7 +299,8 @@ public class NeuralNet {
 				for (double f : n.getWeights()) {
 					System.out.print(f + "(" + n.getInput(index++) + ") ");
 				}
-				System.out.println(" (p:" + n.getPreviousOutput() +") (b:" + n.bias + ") " + n.getTotal() + " = " + n.fire());
+				System.out.println(
+						" (p:" + n.getPreviousOutput() + ") (b:" + n.bias + ") " + n.getTotal() + " = " + n.fire());
 			}
 			list.add(doubleArr);
 		}
@@ -300,7 +332,7 @@ public class NeuralNet {
 		}
 		return biasLayer;
 	}
-	
+
 	public ArrayList<ArrayList<Double>> dumpPreviousOutputs() {
 		ArrayList<ArrayList<Double>> biasLayer = new ArrayList<ArrayList<Double>>();
 		for (int i = 0; i < layerCount; i++) {
@@ -316,7 +348,7 @@ public class NeuralNet {
 
 	public ArrayList<double[]> dumpDeltaPreviousOutput() {
 		ArrayList<double[]> list = new ArrayList<double[]>();
-	
+
 		for (int i = 0; i < layerCount; i++) {
 			ArrayList<Neuron> layer = layers.get(i);
 			double[] doubleArr = new double[layerCount];
@@ -328,7 +360,7 @@ public class NeuralNet {
 		}
 		return list;
 	}
-	
+
 	public ArrayList<ArrayList<double[]>> dumpDeltas() {
 		ArrayList<ArrayList<double[]>> list = new ArrayList<ArrayList<double[]>>();
 		for (int i = 0; i < layerCount; i++) {
@@ -458,11 +490,13 @@ public class NeuralNet {
 					n.setWeights(i2, range * random.nextDouble() + min);
 				}
 				n.setBiasWeight(range * random.nextDouble() + min);
-				n.setPreviousOutputWeight(range * random.nextDouble() + min);
+				if (this.config.isRecurrent) {
+					n.setPreviousOutputWeight(range * random.nextDouble() + min);
+				}
 			}
 		}
 	}
-	
+
 	public void updatePreviousOutputs() {
 		for (Neuron n : this.allNeurons) {
 			n.updatePreviousOutput();
@@ -519,23 +553,27 @@ public class NeuralNet {
 		int i2 = 0;
 		for (Neuron n : layers.get(layerCount - 1)) {
 			double errorTerm;
-			
+
 			if (this.gradientFormula == Config.DERIVATIVE) {
-				errorTerm = n.derivative() * (expectedOutput[i2++] - n.fire());
+				errorTerm = n.derivative() * (expectedOutput[i2++] - n.fire() + n.previousErrorSumForNode);
 			} else {
-				errorTerm = expectedOutput[i2++] - n.fire();
+				errorTerm = expectedOutput[i2++] - n.fire() + n.previousErrorSumForNode;
 			}
-			double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, recordDelta);
-			deltaSum += y;
+			double nodeError = n.adjustForOutput(errorTerm, learningRate, momentumFactor, recordDelta);
+			if (n.isRecurrent())
+				n.previousErrorSumForNode = nodeError;
+			deltaSum += nodeError;
 		}
 
 		for (int i = layerCount - 2; i >= 0; i--) {
 			ArrayList<Neuron> layer = layers.get(i);
 			double currentDeltaSum = 0;
 			for (Neuron n : layer) {
-				double errorTerm = n.derivative() * deltaSum;
-				double y = n.adjustForOutput(errorTerm, learningRate, momentumFactor, recordDelta);
-				currentDeltaSum += y;
+				double errorTerm = n.derivative() * (deltaSum + n.previousErrorSumForNode);
+				double nodeError = n.adjustForOutput(errorTerm, learningRate, momentumFactor, recordDelta);
+				if (n.isRecurrent())
+					n.previousErrorSumForNode = nodeError;
+				currentDeltaSum += nodeError;
 			}
 			deltaSum = currentDeltaSum;
 		}
@@ -611,28 +649,29 @@ public class NeuralNet {
 	}
 
 	public void resetRecurrentStates() {
-		for(Neuron n : this.allNeurons) {
+		for (Neuron n : this.allNeurons) {
 			n.resetRecurrenceStates();
 		}
 	}
-	
+
 	public ArrayList<double[]> feed(ArrayList<double[]> lines) {
 		ArrayList<double[]> results = new ArrayList<double[]>();
 		resetRecurrentStates();
 		double[] result = feed(lines.get(0));
 		results.add(result);
 		updatePreviousOutputs();
-		for(int i = 1; i < lines.size(); i++) {
+		for (int i = 1; i < lines.size(); i++) {
 			result = feed(lines.get(i));
 			updatePreviousOutputs();
 			results.add(result);
 		}
-		
+
 		return results;
 	}
-	
+
 	/**
 	 * Evaluate the neural net function
+	 * 
 	 * @param inputs
 	 * @param reset
 	 * @return
@@ -736,52 +775,47 @@ public class NeuralNet {
 		}
 	}
 
-	public Pair<Integer, Double> optimizeRecurrent(ArrayList<ArrayList<double[]>> in, ArrayList<ArrayList<double[]>> exp, double target, int maxEpochs,
-			int callBackInterval, OptimizationListener listener) {
-		@SuppressWarnings("unchecked")
-		ArrayList<ArrayList<double[]>> inputs = (ArrayList<ArrayList<double[]>>) in.clone();
-		@SuppressWarnings("unchecked")
+	@SuppressWarnings("unchecked")
+	public Pair<Integer, Double> optimizeRecurrent(ArrayList<ArrayList<double[]>> in,
+			ArrayList<ArrayList<double[]>> exp, double target, int maxEpochs, int callBackInterval,
+			OptimizationListener listener) {
 		ArrayList<ArrayList<double[]>> expected = (ArrayList<ArrayList<double[]>>) exp.clone();
 		ArrayList<double[]> results = new ArrayList<double[]>();
 
 		long startTime = System.currentTimeMillis();
 		double totalErrors = 0;
 
-		return performStandardRecurrentBackPropagation(target, maxEpochs, callBackInterval, listener, in, expected,
+		return performStandardRecurrentBackPropagation(target, maxEpochs, callBackInterval, listener, (ArrayList<ArrayList<double[]>>)in.clone(), expected,
 				results, startTime, totalErrors);
 
 	}
-	
+
 	private InputSet saveInputs() {
 		InputSet inputSet = new InputSet();
 		inputSet.addState(this.allNeurons);
 		return inputSet;
 	}
-	
+
 	private void restoreInputs(InputSet inputSet) {
-		inputSet.restoreState( this.allNeurons);
+		inputSet.restoreState(this.allNeurons);
 	}
-	
-	private Pair<Integer, Double> performStandardRecurrentBackPropagation(double target, int maxEpochs, int callBackInterval,
-			OptimizationListener listener, ArrayList<ArrayList<double[]>> inputs, ArrayList<ArrayList<double[]>> expected,
-			ArrayList<double[]> results, long startTime, double totalErrors) {
+
+	private Pair<Integer, Double> performStandardRecurrentBackPropagation(double target, int maxEpochs,
+			int callBackInterval, OptimizationListener listener, ArrayList<ArrayList<double[]>> inputs,
+			ArrayList<ArrayList<double[]>> expected, ArrayList<double[]> results, long startTime, double totalErrors) {
 
 		Random rnd = new Random();
 		rnd.setSeed(1234567);
 		int i;
 		ArrayList<double[]> expectedResults = new ArrayList<double[]>();
 		ArrayList<InputSet> inputSetArray = new ArrayList<InputSet>();
-		
+
 		for (ArrayList<double[]> ex : expected) {
-			for(double[] ex2 : ex) {
+			for (double[] ex2 : ex) {
 				expectedResults.add(ex2);
 			}
 		}
-		double[] zeroMagnitudeVector = new double[config.inputCount];
-		for(int m = 0; m < config.inputCount; m++) {
-			zeroMagnitudeVector[m] = 0.0f;
-		}
-		
+
 		for (i = 0; i < maxEpochs; i++) {
 			// System.out.println("adjusting weights.");
 
@@ -789,40 +823,39 @@ public class NeuralNet {
 			results.clear();
 
 			int index = 0;
-//			System.out.println("Epoch " + i);
+			// System.out.println("Epoch " + i);
 			for (ArrayList<double[]> inputSet : inputs) {
 				inputSetArray.clear();
 				ArrayList<double[]> outputSet = expected.get(index);
 				int i2 = 0;
 
 				resetRecurrentStates();
-				feed(inputSet.get(i2));
-				
+
 				double[] output = feed(inputSet.get(i2));
 				inputSetArray.add(saveInputs());
 				updatePreviousOutputs();
 				results.add(output);
-				
-				for(i2 = 1 ; i2 < inputSet.size(); i2++) {
+
+				for (i2 = 1; i2 < inputSet.size(); i2++) {
 					output = feed(inputSet.get(i2));
 					inputSetArray.add(saveInputs());
 					updatePreviousOutputs();
 					results.add(output);
 				}
-				
+
 				i2 = inputSet.size() - 1;
 				inputSetArray.get(i2).restoreState(this.allNeurons);
 				this.adjustWeights(outputSet.get(i2), true);
-				
-				for(i2 = inputSet.size() - 2; i2 >=0; i2--) {
+
+				for (i2 = inputSet.size() - 2; i2 >= 0; i2--) {
 					inputSetArray.get(i2).restoreState(this.allNeurons);
 					this.adjustWeights(outputSet.get(i2), true);
 				}
-				
+
 				// apply all deltas
-//				OutputUtils.print(dumpDeltas());
+				// OutputUtils.print(dumpDeltas());
 				updateDeltas();
-//				System.out.println("update=>\n" + saveStateToJson());
+				// System.out.println("update=>\n" + saveStateToJson());
 				index++;
 			}
 
@@ -961,7 +994,7 @@ public class NeuralNet {
 			n.applyDelta();
 		}
 	}
-	
+
 	private void updateWeightsRprop() {
 		for (int index = 0; index < this.layerCount - 1; index++) {
 			for (Neuron n : this.layers.get(index)) {
@@ -979,7 +1012,7 @@ public class NeuralNet {
 	public void saveToFile(String filename) {
 		try {
 			FileWriter writer = new FileWriter(filename);
-			writer.write(saveStateToJson());
+			writer.write(saveStateToJson(false));
 			writer.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block

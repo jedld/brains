@@ -60,8 +60,9 @@ public class Neuron {
 	private int layer;
 	
 	private boolean isRecurrent = false;
-	private double previousPreviousOutputWeight;
+	protected double previousPreviousOutputWeight;
 	private double deltaPreviousOutputWeight;
+	protected double previousErrorSumForNode;
 
 	public boolean isRecurrent() {
 		return isRecurrent;
@@ -99,6 +100,7 @@ public class Neuron {
 		this.previousOutput = 0.0f;
 		this.previousOutputWeight = 0.0f;
 		this.isRecurrent  = isRecurrent;
+		this.previousErrorSumForNode = 0.0f;
 		
 		for (int i = 0; i < connections; i++) {
 			weight[i] = 0.00f;
@@ -156,10 +158,10 @@ public class Neuron {
 	}
 
 	public double adjustForOutput(double errorTerm, double learningRate, double momentum, boolean deltaOnly) {
-		double sum = 0;
+		double errorSumForNode = 0;
 		double e = (1 - momentum) * learningRate * errorTerm;
 		for (int index = 0; index < inputs.length; index++) {
-			sum += errorTerm * weight[index];
+			errorSumForNode += errorTerm * weight[index];
 			double pw = weight[index];
 			double delta = e * inputs[index] + momentum * (weight[index] - previousWeight[index]);
 			if (deltaOnly) {
@@ -171,7 +173,7 @@ public class Neuron {
 		}
 
 		// update bias weight
-		sum += errorTerm * this.biasWeight * this.bias;
+		errorSumForNode += errorTerm * this.biasWeight * this.bias;
 		double pBW = this.biasWeight;
 		double deltaBias = e * this.bias + momentum * (biasWeight - previousBiasWeight);
 		if (deltaOnly) {
@@ -182,7 +184,7 @@ public class Neuron {
 		}
 		
 		// update previous output weight
-		sum += errorTerm * this.previousOutputWeight * this.previousOutput;
+		errorSumForNode += errorTerm * this.previousOutputWeight * this.previousOutput;
 		double pOW = this.previousOutputWeight;
 		double deltaPreviousOutput = e * this.previousOutput + momentum * (previousOutputWeight - previousPreviousOutputWeight);
 		if (deltaOnly) {
@@ -191,7 +193,7 @@ public class Neuron {
 			this.previousOutputWeight += deltaPreviousOutput;
 			this.previousPreviousOutputWeight = pOW;
 		}
-		return sum;
+		return errorSumForNode;
 	}
 
 	public void applyDelta() {
@@ -353,6 +355,8 @@ public class Neuron {
 
 	public void resetRecurrenceStates() {
 		this.previousOutput = 0.0f;
+		this.previousErrorSumForNode = 0.0f;
+		
 		for(int i = 0; i < inputs.length; i++) {
 			inputs[i] = 0.0f;
 		}

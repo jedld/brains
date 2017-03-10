@@ -18,10 +18,11 @@ public class Main {
 	private static void testSinRecurrent() {
 		System.out.println("starting binary test ....");
 		System.out.println("=========================");
-		NeuralNet.Config config = new NeuralNet.Config(1, 1, 7);
+		NeuralNet.Config config = new NeuralNet.Config(1, 1, 9);
 		config.bias = 1f;
 		config.outputBias = 1f;
 		config.learningRate = 0.01f;
+		config.neuronsPerLayer = 4;
 		config.momentumFactor = 0f;
 		config.activationFunctionType = Neuron.HTAN;
 		config.outputActivationFunctionType = Neuron.SIGMOID;
@@ -35,21 +36,15 @@ public class Main {
 		ArrayList<ArrayList<double[]>> lines = new ArrayList<ArrayList<double[]>>();
 		ArrayList<ArrayList<double[]>> outputLines = new ArrayList<ArrayList<double[]>>();
 
-		
-		createExample(0, 3, lines, outputLines);
-		createExample(4, 9, lines, outputLines);
-		createExample(3, 11, lines, outputLines);
-		createExample(100, 106, lines, outputLines);
-		createExample(20, 27, lines, outputLines);
-		createExample(17, 20, lines, outputLines);
+		createExample(0, 10, lines, outputLines);
 		
 		ArrayList<double[]> test2 = new ArrayList<double[]>();
 		ArrayList<double[]> testResult2 = new ArrayList<double[]>();
-		for(int t = 10; t < 14; t++) {
+		for(int t = 0; t < 3; t++) {
 			test2.add(new double[] {Math.sin(t)});
 		}
 	
-		for(int t = 10; t < 14; t++) {
+		for(int t = 0; t < 3; t++) {
 			testResult2.add(new double[] {Math.sin(t + 1)});
 		}
 		
@@ -71,7 +66,7 @@ public class Main {
 		
 		System.out.println(nn.saveStateToJson());
 		System.out.println("=======training start===========");
-		nn.optimizeRecurrent(lines, outputLines, 0.01, 100000, 1000, new OptimizationListener() {
+		nn.optimizeRecurrent(lines, outputLines, 0.01, 1000000, 1000, new OptimizationListener() {
 
 			@Override
 			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {
@@ -80,7 +75,7 @@ public class Main {
 			} 
 			
 		});
-		
+		System.out.println("=======training end===========");
 		OutputUtils.print(nn.feed(test2));
 		OutputUtils.print(testResult2);
 			
