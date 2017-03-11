@@ -108,7 +108,7 @@ public class NeuralNet {
 				JsonArray weightArr = neuronObj.getAsJsonArray("weights");
 				layerBiases.add(neuronObj.get("biasWeight").getAsDouble());
 				if (config.isRecurrent) {
-					layerHiddenStateWeights.add(neuronObj.get("previousOutputWeight").getAsDouble());
+					layerHiddenStateWeights.add(neuronObj.get("hiddenStateWeight").getAsDouble());
 				}
 				double w[] = new double[weightArr.size()];
 				for (int i3 = 0; i3 < weightArr.size(); i3++) {
@@ -142,7 +142,7 @@ public class NeuralNet {
 			int i2 = 0;
 			for (double w : n) {
 				Neuron neuron = layer.get(i2++);
-				neuron.setPreviousOutputWeight(w);
+				neuron.setPreviousHiddenStateWeight(w);
 			}
 		}
 	}
@@ -185,10 +185,10 @@ public class NeuralNet {
 				nObj.addProperty("bias", n.bias);
 				nObj.addProperty("biasWeight", n.biasWeight);
 				nObj.add("weights", w);
-				nObj.addProperty("previousOutputWeight", n.getPreviousOutputWeight());
+				nObj.addProperty("hiddenStateWeight", n.getPreviousHiddenStateWeight());
 				if (withInputs) {
 					nObj.add("inputs", inputs);
-					nObj.addProperty("previous_output", n.getPreviousOutput());
+					nObj.addProperty("hiddeState", n.getHiddenStateOutput());
 					nObj.addProperty("output", n.output);
 				}
 
@@ -302,7 +302,7 @@ public class NeuralNet {
 					System.out.print(f + "(" + n.getInput(index++) + ") ");
 				}
 				System.out.println(
-						" (p:" + n.getPreviousOutput() + ") (b:" + n.bias + ") " + n.getTotal() + " = " + n.fire());
+						" (p:" + n.getHiddenStateOutput() + ") (b:" + n.bias + ") " + n.getTotal() + " = " + n.fire());
 			}
 			list.add(doubleArr);
 		}
@@ -341,7 +341,7 @@ public class NeuralNet {
 			ArrayList<Neuron> layer = layers.get(i);
 			ArrayList<Double> doubleArr = new ArrayList<Double>();
 			for (Neuron n : layer) {
-				doubleArr.add(n.getPreviousOutput());
+				doubleArr.add(n.getHiddenStateOutput());
 			}
 			biasLayer.add(doubleArr);
 		}
@@ -493,7 +493,7 @@ public class NeuralNet {
 				}
 				n.setBiasWeight(range * random.nextDouble() + min);
 				if (this.config.isRecurrent) {
-					n.setPreviousOutputWeight(range * random.nextDouble() + min);
+					n.setPreviousHiddenStateWeight(range * random.nextDouble() + min);
 				}
 			}
 		}

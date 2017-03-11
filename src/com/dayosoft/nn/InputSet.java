@@ -11,7 +11,7 @@ public class InputSet {
 	public void addState(List<Neuron> neurons) {
 		for(Neuron n : neurons) {
 			inputsList.add(n.getInputs().clone());
-			previousOutputList.add(n.getPreviousOutput());
+			previousOutputList.add(n.getHiddenStateOutput());
 			currentOutputList.add(n.output);
 		}
 	}
@@ -23,7 +23,7 @@ public class InputSet {
 			double previousOutput = previousOutputList.get(index);
 			double currentOutput = currentOutputList.get(index);
 			n.setInput(inputs);
-			n.setPreviousOutput(previousOutput);
+			n.setHiddenStateOutput(previousOutput);
 			n.setOutput(currentOutput);
 			
 			index++;
