@@ -18,11 +18,11 @@ public class Main {
 	private static void testSinRecurrent() {
 		System.out.println("starting binary test ....");
 		System.out.println("=========================");
-		NeuralNet.Config config = new NeuralNet.Config(1, 1, 9);
+		NeuralNet.Config config = new NeuralNet.Config(1, 1, 4);
 		config.bias = 1f;
 		config.outputBias = 1f;
 		config.learningRate = 0.01f;
-		config.neuronsPerLayer = 4;
+		config.neuronsPerLayer = 3;
 		config.momentumFactor = 0f;
 		config.activationFunctionType = Neuron.HTAN;
 		config.outputActivationFunctionType = Neuron.HTAN;
@@ -40,11 +40,11 @@ public class Main {
 		
 		ArrayList<double[]> test2 = new ArrayList<double[]>();
 		ArrayList<double[]> testResult2 = new ArrayList<double[]>();
-		for(int t = 0; t < 10; t++) {
+		for(int t = 0; t < 20; t++) {
 			test2.add(new double[] {Math.sin(t)});
 		}
 	
-		for(int t = 0; t < 10; t++) {
+		for(int t = 0; t < 20; t++) {
 			testResult2.add(new double[] {Math.sin(t + 1)});
 		}
 		
@@ -65,7 +65,7 @@ public class Main {
 		OutputUtils.print(itemResult3);
 		
 		System.out.println("=======training start===========");
-		nn.optimizeRecurrent(lines, outputLines, 0.001, 0, 1000000, 1000, new OptimizationListener() {
+		nn.optimizeRecurrent(lines, outputLines, 0.0001, 0, 1000000, 1000, new OptimizationListener() {
 
 			@Override
 			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {

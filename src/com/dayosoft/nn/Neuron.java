@@ -11,12 +11,9 @@ public class Neuron {
 	public static final int SOFTMAX = 3;
 	public static final int RECTIFIER = 4;
 	long seed;
-	double bias;
 	double previousBiasWeight;
 	int activationFunctionType = SIGMOID;
 	int totalConnections;
-	private double weight[];
-	double biasWeight = 0f;
 	private double previousWeight[];
 
 	// for batch learning
@@ -28,29 +25,24 @@ public class Neuron {
 	private double hiddenStateDeltaBias = 0.0f;
 	private double biasUpdateValue = 0.0f;
 	private double biasChange = 0.0f;
-	
-	private double inputs[];
-	
-	//used for recurrent neural networks
-	private double hiddenStateValue = 0.0f;
-	
+
 	public double getHiddenStateOutput() {
-		return hiddenStateValue;
+		return runtimeStates.hiddenState;
 	}
 
 	public void setHiddenStateOutput(double previousOutput) {
-		this.hiddenStateValue = previousOutput;
+		runtimeStates.hiddenState = previousOutput;
 	}
 
 	public double getPreviousHiddenStateWeight() {
-		return previousHiddenStateWeight;
+		return hiddenStateWeight;
 	}
 
 	public void setPreviousHiddenStateWeight(double previousHiddenStateWeight) {
-		this.previousHiddenStateWeight = previousHiddenStateWeight;
+		this.hiddenStateWeight = previousHiddenStateWeight;
 	}
 
-	private double previousHiddenStateWeight = 0.0f;
+	private double hiddenStateWeight = 0.0f;
 	private ArrayList<double[]> recordedInputs = new ArrayList<double[]>();
 
 	protected boolean fired = false;
@@ -63,6 +55,8 @@ public class Neuron {
 	protected double previousHiddenStateOutputWeight;
 	private double deltaPreviousHiddenStateOutputWeight;
 	protected double previousErrorSumForNode;
+	private NeuronInputs runtimeStates;
+	protected ParameterSet parameterSet;
 
 	public boolean isRecurrent() {
 		return isRecurrent;
@@ -81,29 +75,38 @@ public class Neuron {
 	}
 
 	public Neuron(int id, int layer, int connections, double triggerValue, boolean isRecurrent, int activationFunctionType) {
+		this.runtimeStates = new NeuronInputs(connections);
+		this.parameterSet = new ParameterSet(connections);
+		setupNeuron(id, layer, connections, triggerValue, isRecurrent, activationFunctionType);		
+	}
+	
+	public Neuron(NeuronInputs inputs, ParameterSet parameters, int id, int layer, int connections, double triggerValue, boolean isRecurrent, int activationFunctionType) {
+		this.runtimeStates = inputs;
+		this.parameterSet = parameters;
+		setupNeuron(id, layer, connections, triggerValue, isRecurrent, activationFunctionType);
+	}
+
+	private void setupNeuron(int id, int layer, int connections, double triggerValue, boolean isRecurrent,
+			int activationFunctionType) {
 		this.id = id;
 		this.activationFunctionType = activationFunctionType;
 		this.layer = layer;
-		this.bias = triggerValue;
+		this.parameterSet.bias = triggerValue;
 		this.totalConnections = connections;
-		this.inputs = new double[connections];
 		this.previousWeight = new double[connections];
 		this.deltaWeight = new double[connections];
 		this.previousDeltaWeight = new double[connections];
 		this.weightUpdateValue = new double[connections];
 		this.weightChange = new double[connections];
-		this.setWeights(new double[connections]);
 		this.deltaBias = 0.0f;
 		this.hiddenStateDeltaBias = 0.0f;
 		this.biasChange = 0.0f;
 		this.biasUpdateValue = 0.1f;
-		this.hiddenStateValue = 0.0f;
-		this.previousHiddenStateWeight = 0.0f;
+		this.hiddenStateWeight = 0.0f;
 		this.isRecurrent  = isRecurrent;
 		this.previousErrorSumForNode = 0.0f;
 		
 		for (int i = 0; i < connections; i++) {
-			weight[i] = 0.00f;
 			previousWeight[i] = 0.00f;
 			deltaWeight[i] = 0.0f;
 			previousDeltaWeight[i] = 0.0f;
@@ -139,19 +142,19 @@ public class Neuron {
 	}
 
 	public void setInput(int id, double value) {
-		inputs[id] = value;
+		runtimeStates.inputs[id] = value;
 	};
 
 	public double computeForDelta(double errorTerm) {
 		double sum = 0;
-		for (int index = 0; index < inputs.length; index++) {
-			double delta = errorTerm * inputs[index];
-			sum += errorTerm * weight[index];
+		for (int index = 0; index < runtimeStates.inputsize ; index++) {
+			double delta = errorTerm * runtimeStates.inputs[index];
+			sum += errorTerm * this.parameterSet.weights[index];
 			deltaWeight[index] += delta;
 			System.out.println("g " +deltaWeight[index]);
 		}
 
-		sum += errorTerm * this.biasWeight;
+		sum += errorTerm * this.parameterSet.biasWeight;
 		this.deltaBias += errorTerm;
 		System.out.println("g " +deltaBias);
 		return sum;
@@ -160,54 +163,59 @@ public class Neuron {
 	public double adjustForOutput(double errorTerm, double learningRate, double momentum, boolean deltaOnly) {
 		double errorSumForNode = 0;
 		double e = (1 - momentum) * learningRate * errorTerm;
-		for (int index = 0; index < inputs.length; index++) {
-			errorSumForNode += errorTerm * weight[index];
-			double pw = weight[index];
-			double delta = e * inputs[index] + momentum * (weight[index] - previousWeight[index]);
+		for (int index = 0; index < runtimeStates.inputsize; index++) {
+			errorSumForNode += errorTerm * this.parameterSet.weights[index];
+			double pw = this.parameterSet.weights[index];
+			double delta = e * runtimeStates.inputs[index] + momentum * (this.parameterSet.weights[index] - previousWeight[index]);
 			if (deltaOnly) {
 				deltaWeight[index] += delta;
 			} else {
 				previousWeight[index] = pw;
-				weight[index] += delta;
+				this.parameterSet.weights[index] += delta;
 			}
 		}
 
 		// update bias weight
-		errorSumForNode += errorTerm * this.biasWeight * this.bias;
-		double pBW = this.biasWeight;
-		double deltaBias = e * this.bias + momentum * (biasWeight - previousBiasWeight);
+		errorSumForNode += errorTerm * this.parameterSet.biasWeight * this.parameterSet.bias;
+		double pBW = this.parameterSet.biasWeight;
+		double deltaBias = e * this.parameterSet.bias + momentum * (this.parameterSet.biasWeight - previousBiasWeight);
 		if (deltaOnly) {
 			this.deltaBias += deltaBias;
 		} else {
-			this.biasWeight += deltaBias;
+			this.parameterSet.biasWeight += deltaBias;
 			this.previousBiasWeight = pBW;
 		}
 		
 		// update previous output weight
-		errorSumForNode += errorTerm * this.previousHiddenStateWeight * this.hiddenStateValue;
-		double pOW = this.previousHiddenStateWeight;
-		double deltaPreviousOutput = e * this.hiddenStateValue + momentum * (previousHiddenStateWeight - previousHiddenStateOutputWeight);
-		if (deltaOnly) {
-			this.deltaPreviousHiddenStateOutputWeight += deltaPreviousOutput;
-		} else {
-			this.previousHiddenStateWeight += deltaPreviousOutput;
-			this.previousHiddenStateOutputWeight = pOW;
+		if (this.isRecurrent) {
+			double hiddenStateError = errorTerm * this.hiddenStateWeight * runtimeStates.hiddenState;
+			this.previousErrorSumForNode = hiddenStateError;
+			errorSumForNode += hiddenStateError;
+			double pOW = this.hiddenStateWeight;
+			double deltaPreviousOutput = e * runtimeStates.hiddenState + momentum * (hiddenStateWeight - previousHiddenStateOutputWeight);
+			if (deltaOnly) {
+				this.deltaPreviousHiddenStateOutputWeight += deltaPreviousOutput;
+			} else {
+				this.hiddenStateWeight += deltaPreviousOutput;
+				this.previousHiddenStateOutputWeight = pOW;
+			}
 		}
+
 		return errorSumForNode;
 	}
 
 	public void applyDelta() {
 		for (int i = 0; i < this.totalConnections; i++) {
-			previousWeight[i] = weight[i];
-			weight[i] += deltaWeight[i];
+			previousWeight[i] = this.parameterSet.weights[i];
+			this.parameterSet.weights[i] += deltaWeight[i];
 			deltaWeight[i] = 0.0f;
 		}
-		this.previousBiasWeight = this.biasWeight;
-		this.biasWeight += this.deltaBias;
+		this.previousBiasWeight = this.parameterSet.biasWeight;
+		this.parameterSet.biasWeight += this.deltaBias;
 		this.deltaBias = 0.0f;
 		
-		this.previousHiddenStateOutputWeight = this.previousHiddenStateWeight;
-		this.previousHiddenStateWeight += this.deltaPreviousHiddenStateOutputWeight;
+		this.previousHiddenStateOutputWeight = this.hiddenStateWeight;
+		this.hiddenStateWeight += this.deltaPreviousHiddenStateOutputWeight;
 		this.deltaPreviousHiddenStateOutputWeight = 0.0f;
 	}
 
@@ -215,11 +223,11 @@ public class Neuron {
 		double sumDeltaWeights = 0;
 		for (int i = 0; i < this.totalConnections; i++) {
 			this.deltaWeight[i] += fire() * value;
-			sumDeltaWeights += value * weight[i];
+			sumDeltaWeights += value * this.parameterSet.weights[i];
 		}
 
 		this.deltaBias += value;
-		return sumDeltaWeights + (value * bias);
+		return sumDeltaWeights + (value * this.parameterSet.bias);
 	}
 
 	public double derivative() {
@@ -259,15 +267,15 @@ public class Neuron {
 
 	public double getTotal() {
 		double total = 0;
-		for (int index = 0; index < inputs.length; index++) {
-			total += inputs[index] * weight[index];
+		for (int index = 0; index < runtimeStates.inputsize ; index++) {
+			total += runtimeStates.inputs[index] * this.parameterSet.weights[index];
 		}
 		
-		return total + hiddenStateValue * previousHiddenStateWeight + biasWeight * bias;
+		return total + runtimeStates.hiddenState * hiddenStateWeight + this.parameterSet.biasWeight * this.parameterSet.bias;
 	}
 
 	double[] getWeights() {
-		return weight;
+		return this.parameterSet.weights;
 	}
 
 	double[] getDeltas() {
@@ -275,21 +283,21 @@ public class Neuron {
 	}
 
 	void setWeights(double weights[]) {
-		this.weight = weights;
+		this.parameterSet.weights = weights;
 		this.previousWeight = weights.clone();
 	}
 
 	public double getInput(int i) {
-		return inputs[i];
+		return runtimeStates.inputs[i];
 	}
 
 	public void setWeights(int i2, double w) {
-		this.weight[i2] = w;
+		this.parameterSet.weights[i2] = w;
 		this.previousWeight[i2] = w;
 	}
 
 	public void setBiasWeight(double d) {
-		this.biasWeight = d;
+		this.parameterSet.biasWeight = d;
 		this.previousBiasWeight = d;
 	}
 
@@ -339,35 +347,31 @@ public class Neuron {
 		}
 
 		if (i == -1) {
-			this.bias += weightChange;
+			this.parameterSet.bias += weightChange;
 			this.biasChange = weightChange;
 			this.biasUpdateValue = weightUpdateValue;
 			this.hiddenStateDeltaBias = gradient;
-			System.out.println(this.bias);
+			System.out.println(this.parameterSet.bias);
 		} else {
-			this.weight[i] += weightChange;
+			this.parameterSet.weights[i] += weightChange;
 			this.weightChange[i] = weightChange;
 			this.weightUpdateValue[i] = weightUpdateValue;
 			this.previousDeltaWeight[i] = gradient;
-			System.out.println(this.weight[i] + " " + weightChange);
+			System.out.println(this.parameterSet.weights[i] + " " + weightChange);
 		}
 	}
 
 	public void resetRecurrenceStates() {
-		this.hiddenStateValue = 0.0f;
+		runtimeStates.hiddenState = 0.0f;
 		
-		for(int i = 0; i < inputs.length; i++) {
-			inputs[i] = 0.0f;
+		for(int i = 0; i < runtimeStates.inputsize; i++) {
+			runtimeStates.inputs[i] = 0.0f;
 		}
-	}
-
-	public void setRecordedInput(int index) {
-		this.inputs = this.recordedInputs.get(index);
 	}
 
 	public void updatePreviousOutput() {
 		if (fired) {
-			this.hiddenStateValue = this.output;
+			runtimeStates.hiddenState = this.output;
 		} else {
 			//neuron not fired! This is not expected
 			throw new RuntimeException();
@@ -380,11 +384,11 @@ public class Neuron {
 	}
 
 	public double[] getInputs() {
-		return this.inputs;
+		return this.runtimeStates.inputs;
 	}
 
 	public void setInput(double[] newInput) {
-		this.inputs = newInput;
+		this.runtimeStates.inputs = newInput;
 	}
 
 	public void setOutput(double currentOutput) {

@@ -182,8 +182,8 @@ public class NeuralNet {
 					inputs.add(d);
 				}
 
-				nObj.addProperty("bias", n.bias);
-				nObj.addProperty("biasWeight", n.biasWeight);
+				nObj.addProperty("bias", n.parameterSet.bias);
+				nObj.addProperty("biasWeight", n.parameterSet.biasWeight);
 				nObj.add("weights", w);
 				nObj.addProperty("hiddenStateWeight", n.getPreviousHiddenStateWeight());
 				if (withInputs) {
@@ -302,7 +302,7 @@ public class NeuralNet {
 					System.out.print(f + "(" + n.getInput(index++) + ") ");
 				}
 				System.out.println(
-						" (p:" + n.getHiddenStateOutput() + ") (b:" + n.bias + ") " + n.getTotal() + " = " + n.fire());
+						" (p:" + n.getHiddenStateOutput() + ") (b:" + n.parameterSet.bias + ") " + n.getTotal() + " = " + n.fire());
 			}
 			list.add(doubleArr);
 		}
@@ -328,7 +328,7 @@ public class NeuralNet {
 			ArrayList<Neuron> layer = layers.get(i);
 			ArrayList<Double> doubleArr = new ArrayList<Double>();
 			for (Neuron n : layer) {
-				doubleArr.add(n.bias);
+				doubleArr.add(n.parameterSet.bias);
 			}
 			biasLayer.add(doubleArr);
 		}
@@ -559,11 +559,10 @@ public class NeuralNet {
 			if (this.gradientFormula == Config.DERIVATIVE) {
 				errorTerm = n.derivative() * (expectedOutput[i2++] - n.fire() + n.previousErrorSumForNode);
 			} else {
-				errorTerm = expectedOutput[i2++] - n.fire() + n.previousErrorSumForNode;
+				errorTerm = expectedOutput[i2++] - n.fire();
 			}
+
 			double nodeError = n.adjustForOutput(errorTerm, learningRate, momentumFactor, recordDelta);
-			if (n.isRecurrent())
-				n.previousErrorSumForNode = nodeError;
 			deltaSum += nodeError;
 		}
 
@@ -573,8 +572,6 @@ public class NeuralNet {
 			for (Neuron n : layer) {
 				double errorTerm = n.derivative() * (deltaSum + n.previousErrorSumForNode);
 				double nodeError = n.adjustForOutput(errorTerm, learningRate, momentumFactor, recordDelta);
-				if (n.isRecurrent())
-					n.previousErrorSumForNode = nodeError;
 				currentDeltaSum += nodeError;
 			}
 			deltaSum = currentDeltaSum;
@@ -590,7 +587,11 @@ public class NeuralNet {
 		this.neuronsPerLayer = config.neuronsPerLayer;
 		this.layerCount = neurons / config.neuronsPerLayer;
 		this.bias = config.bias;
-		this.momentumFactor = config.momentumFactor;
+		if (config.isRecurrent) {
+			this.momentumFactor = 0; //disable momentum
+		} else {
+			this.momentumFactor = config.momentumFactor;
+		}
 		this.outputBias = config.outputBias;
 		this.activationFunctionType = config.activationFunctionType;
 		this.outputActivationFunctionType = config.outputActivationFunctionType;
@@ -795,7 +796,6 @@ public class NeuralNet {
 
 		return performStandardRecurrentBackPropagation(target, maxEpochs, callBackInterval, maxLayerCount, listener,
 				(ArrayList<ArrayList<double[]>>) in.clone(), expected, results, startTime, totalErrors);
-
 	}
 
 	private InputSet saveInputs() {
