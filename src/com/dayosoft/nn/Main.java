@@ -11,8 +11,8 @@ import com.dayosoft.nn.utils.OutputUtils;
 
 public class Main {
 	public static void main(String args[]) {
-//		testSin();
-//		testSinRecurrent();
+		testSin();
+		testSinRecurrent();
 		testSoftMax();
 	}
 
@@ -22,6 +22,23 @@ public class Main {
 		     Integer.parseInt(colorValue.substring(2, 4), 16) / 256.0,
 		     Integer.parseInt(colorValue.substring(4, 6), 16) / 256.0
 		};
+	}
+	
+	private static String toColor(double[] output) {
+		double maxValue = 0;
+		int index = 0;
+		for(int i =0; i < output.length; i++) {
+			if (output[i] > maxValue) {
+				maxValue = output[i];
+				index = i;
+			}
+		}
+		switch(index) {
+		case 0: return "RED";
+		case 1: return "GREEN";
+		case 2: return "BLUE";
+		}
+		return ""; 
 	}
 	
 	private static void testSoftMax() {
@@ -61,8 +78,12 @@ public class Main {
 //		  [color_value('4C516D'), BLUE],
 		inputs.add(colorValue("e32636"));
 		inputs.add(colorValue("8b0000"));
+		inputs.add(colorValue("674846"));
 		
 		inputs.add(colorValue("8f9779"));
+		inputs.add(colorValue("00ff00"));
+		inputs.add(colorValue("006400"));
+		inputs.add(colorValue("013220"));
 		
 		inputs.add(colorValue("89cff0"));
 		inputs.add(colorValue("0070bb"));
@@ -74,30 +95,50 @@ public class Main {
 		
 		expected.add(RED);
 		expected.add(RED);
+		expected.add(RED);
 		
+		expected.add(GREEN);
+		expected.add(GREEN);
+		expected.add(GREEN);
 		expected.add(GREEN);
 
 		expected.add(BLUE);
 		expected.add(BLUE);
 		expected.add(BLUE);
 		
+		
+		ArrayList<double[]> testInputs = new ArrayList<double[]>();
+		testInputs.add(colorValue("333399")); //blue
+		testInputs.add(colorValue("c80815")); //red
+		testInputs.add(colorValue("4c516d")); //blue
+		testInputs.add(colorValue("009E60")); //green
+		testInputs.add(colorValue("00FF00")); //green
+		
 		NeuralNet nn = new NeuralNet(config);
 		nn.randomizeWeights(-1, 1);
-		OutputUtils.print(nn.feed(colorValue("4c516d")));
+
+		for(double[] inp : testInputs) {
+			double[] out = nn.feed(inp);
+			OutputUtils.print(nn.feed(inp));
+			System.out.println(toColor(out));
+		}
 		
 		System.out.println("=======training start===========");
-		nn.optimize(inputs, expected, 0.01, 1000000, 1000, new OptimizationListener() {
+		nn.optimize(inputs, expected, 0.1, 1000000, 1000, new OptimizationListener() {
 
 			@Override
 			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {
 				// TODO Auto-generated method stub
-				System.out.println(i + " " + totalErrors + " " + elapsedPerEpoch);
+//				System.out.println(i + " " + totalErrors + " " + elapsedPerEpoch);
 			} 
 			
 		});
 		
-		OutputUtils.print(nn.feed(colorValue("4c516d"))); //Blue
-		OutputUtils.print(nn.feed(colorValue("8f9779"))); //Green
+		for(double[] inp : testInputs) {
+			double[] out = nn.feed(inp);
+			OutputUtils.print(nn.feed(inp));
+			System.out.println(toColor(out));
+		}
 	}
 	
 	private static void testSinRecurrent() {
