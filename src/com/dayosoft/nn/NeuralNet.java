@@ -633,7 +633,7 @@ public class NeuralNet {
 			} else if (i == layerCount - 1) {
 				for (int i2 = 0; i2 < outputCount; i2++) {
 					neuron = new Neuron(i2, i, config.neuronsPerLayer, config.outputBias, config.isRecurrent,
-							this.outputActivationFunctionType);
+							this.activationFunctionType);
 					aLayer.add(neuron);
 					allNeurons.add(neuron);
 				}
@@ -715,6 +715,18 @@ public class NeuralNet {
 		setInputs(layerOutputs, currentFireListSize, thisLayer);
 		fireLayer(output, thisLayer);
 
+		if (this.outputActivationFunctionType == Neuron.SOFTMAX) {
+			double sum = 0;
+			
+			for(double x : output) {
+				sum += Math.exp(x);
+			}
+			
+			for(int index = 0; index < output.length; index++) {
+				output[index] = Math.exp(output[index]) / sum;
+			}
+		}
+
 		return output;
 	}
 
@@ -742,7 +754,7 @@ public class NeuralNet {
 			return Math.pow(difference, 2);
 		} else if (this.errorFormula == Config.CROSS_ENTROPY) {
 			for (int i = 0; i < output.length; i++) {
-				difference += Math.log(output[i]) * expectedOutput[i];
+				difference += -Math.log(output[i]) * expectedOutput[i];
 			}
 		}
 		return difference;

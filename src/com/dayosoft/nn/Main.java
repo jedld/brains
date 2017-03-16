@@ -11,10 +11,95 @@ import com.dayosoft.nn.utils.OutputUtils;
 
 public class Main {
 	public static void main(String args[]) {
-		testSin();
-		testSinRecurrent();
+//		testSin();
+//		testSinRecurrent();
+		testSoftMax();
 	}
 
+	private static double[] colorValue(String colorValue) {
+		return new double[] {
+		     Integer.parseInt(colorValue.substring(0, 2), 16) / 256.0,
+		     Integer.parseInt(colorValue.substring(2, 4), 16) / 256.0,
+		     Integer.parseInt(colorValue.substring(4, 6), 16) / 256.0
+		};
+	}
+	
+	private static void testSoftMax() {
+		NeuralNet.Config config = new NeuralNet.Config(3, 3, 4);
+		config.bias = 1f;
+		config.outputBias = 1f;
+		config.learningRate = 0.01f;
+		config.neuronsPerLayer = 3;
+		config.momentumFactor = 0f;
+		config.activationFunctionType = Neuron.HTAN;
+		config.outputActivationFunctionType = Neuron.SOFTMAX;
+		config.errorFormula = Config.CROSS_ENTROPY;
+		config.backPropagationAlgorithm = Config.STANDARD_BACKPROPAGATION;
+		
+		ArrayList<double[]> inputs = new ArrayList<double[]>();
+		ArrayList<double[]> expected = new ArrayList<double[]>();
+//		  [color_value('E32636'), RED],
+//		  [color_value('8B0000'), RED],
+//		  [color_value('800000'), RED],
+//		  [color_value('65000B'), RED],
+//		  [color_value('674846'), RED],
+//
+//		  #green
+//		  [color_value('8F9779'), GREEN],
+//		  [color_value('568203'), GREEN],
+//		  [color_value('013220'), GREEN],
+//		  [color_value('00FF00'), GREEN],
+//		  [color_value('006400'), GREEN],
+//		  [color_value('00A877'), GREEN],
+//
+//		  #blue
+//		  [color_value('89CFF0'), BLUE],
+//		  [color_value('ADD8E6'), BLUE],
+//		  [color_value('0000FF'), BLUE],
+//		  [color_value('0070BB'), BLUE],
+//		  [color_value('545AA7'), BLUE],
+//		  [color_value('4C516D'), BLUE],
+		inputs.add(colorValue("e32636"));
+		inputs.add(colorValue("8b0000"));
+		
+		inputs.add(colorValue("8f9779"));
+		
+		inputs.add(colorValue("89cff0"));
+		inputs.add(colorValue("0070bb"));
+		inputs.add(colorValue("4c516d"));
+		
+		final double[] RED = new double[] { 1.0, 0.0, 0.0 };
+		final double[] GREEN = new double[] { 0.0, 1.0, 0.0 };
+		final double[] BLUE = new double[] { 0.0, 0.0, 1.0 };
+		
+		expected.add(RED);
+		expected.add(RED);
+		
+		expected.add(GREEN);
+
+		expected.add(BLUE);
+		expected.add(BLUE);
+		expected.add(BLUE);
+		
+		NeuralNet nn = new NeuralNet(config);
+		nn.randomizeWeights(-1, 1);
+		OutputUtils.print(nn.feed(colorValue("4c516d")));
+		
+		System.out.println("=======training start===========");
+		nn.optimize(inputs, expected, 0.01, 1000000, 1000, new OptimizationListener() {
+
+			@Override
+			public void checkpoint(int i, double totalErrors, long elapsedPerEpoch) {
+				// TODO Auto-generated method stub
+				System.out.println(i + " " + totalErrors + " " + elapsedPerEpoch);
+			} 
+			
+		});
+		
+		OutputUtils.print(nn.feed(colorValue("4c516d"))); //Blue
+		OutputUtils.print(nn.feed(colorValue("8f9779"))); //Green
+	}
+	
 	private static void testSinRecurrent() {
 		System.out.println("starting binary test ....");
 		System.out.println("=========================");

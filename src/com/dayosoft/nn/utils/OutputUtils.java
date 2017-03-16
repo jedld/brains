@@ -14,7 +14,7 @@ public class OutputUtils {
 		System.out.println();
 	}
 
-	private static void printOutputF(double[] output) {
+	public static void print(double[] output) {
 		for (double o : output) {
 			System.out.print(round(o));
 			System.out.print(" ");
